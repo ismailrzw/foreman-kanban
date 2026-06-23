@@ -55,6 +55,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Save backend Docker image
+        run: |
+          docker save foreman-backend:ci-${{ github.sha }} | gzip > backend-image.tar.gz
+
+      - name: Upload backend image
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-image
+          path: backend-image.tar.gz
+
   # ─── Frontend Checks ───
   frontend:
     name: Frontend — Lint, Build
@@ -107,3 +117,56 @@ jobs:
             VITE_FIREBASE_STORAGE_BUCKET=placeholder.appspot.com
             VITE_FIREBASE_MESSAGING_SENDER_ID=000000
             VITE_FIREBASE_APP_ID=placeholder
+
+      - name: Save frontend Docker image
+        run: |
+          docker save foreman-frontend:ci-${{ github.sha }} | gzip > frontend-image.tar.gz
+
+      - name: Upload frontend image
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-image
+          path: frontend-image.tar.gz
+
+  # ─── Security Scan ───
+  security-scan:
+    name: Security Scan
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download backend image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-image
+          path: /tmp
+
+      - name: Download frontend image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-image
+          path: /tmp
+
+      - name: Load backend image
+        run: docker load < /tmp/backend-image.tar.gz
+
+      - name: Load frontend image
+        run: docker load < /tmp/frontend-image.tar.gz
+
+      - name: Run backend security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'foreman-backend:ci-${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run frontend security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'foreman-frontend:ci-${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
