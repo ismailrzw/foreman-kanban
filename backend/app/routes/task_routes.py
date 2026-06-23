@@ -31,8 +31,10 @@ from app.models.task import (
 )
 from app.utils.status_machine import validate_transition
 from app.core.database import get_database
+from app.utils.audit_logger import log_audit
 
 router = APIRouter(prefix="/api", tags=["tasks"])
+
 
 
 def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
@@ -147,10 +149,12 @@ async def create_task(
 
     result = await db.tasks.insert_one(doc)
     doc["_id"] = result.inserted_id
+    await log_audit(task_id=str(result.inserted_id), action="created", user=current_user, new_stage="todo")
 
     # Get assignee name for response
     users_cache = {employee["firebase_uid"]: employee["name"]}
     return task_doc_to_response(doc, users_cache)
+
 
 
 # ─── UPDATE TASK (Manager only) ─────────────────────────────
@@ -194,9 +198,18 @@ async def update_task(
         {"_id": ObjectId(task_id)},
         {"$set": update_fields},
     )
+    await log_audit(
+        task_id=task_id,
+        action="updated",
+        user=current_user,
+        previous_stage=task["stage"],
+        new_stage=update_fields.get("stage"),
+        details="Metadata updated"
+    )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
+
 
 
 # ─── DELETE TASK (Manager only) ──────────────────────────────
@@ -212,9 +225,18 @@ async def delete_task(
     if not ObjectId.is_valid(task_id):
         raise HTTPException(status_code=400, detail="Invalid task ID format.")
 
-    result = await db.tasks.delete_one({"_id": ObjectId(task_id)})
-    if result.deleted_count == 0:
+    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
+
+    await db.tasks.delete_one({"_id": ObjectId(task_id)})
+    await log_audit(
+        task_id=task_id,
+        action="deleted",
+        user=current_user,
+        previous_stage=task["stage"]
+    )
+
 
 
 # ─── SUBMIT FOR REVIEW (Employee only) ──────────────────────
@@ -266,9 +288,17 @@ async def submit_for_review(
             "updated_at": now,
         }},
     )
+    await log_audit(
+        task_id=task_id,
+        action="submitted",
+        user=current_user,
+        previous_stage=task["stage"],
+        new_stage="submitted_for_review"
+    )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
+
 
 
 # ─── START TASK (Employee only) ──────────────────────────────
@@ -310,9 +340,17 @@ async def start_task(
         {"_id": ObjectId(task_id)},
         {"$set": {"stage": "in_progress", "updated_at": now}},
     )
+    await log_audit(
+        task_id=task_id,
+        action="started",
+        user=current_user,
+        previous_stage=task["stage"],
+        new_stage="in_progress"
+    )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
+
 
 
 # ─── REVIEW TASK (Manager only) ─────────────────────────────
@@ -367,6 +405,13 @@ async def review_task(
                 "updated_at": now,
             }},
         )
+        await log_audit(
+            task_id=task_id,
+            action="confirmed",
+            user=current_user,
+            previous_stage=task["stage"],
+            new_stage="done"
+        )
 
 
     elif review_data.action == "reject":
@@ -407,6 +452,14 @@ async def review_task(
                     "revision_count": 1
                 }
             },
+        )
+        await log_audit(
+            task_id=task_id,
+            action="rejected",
+            user=current_user,
+            previous_stage=task["stage"],
+            new_stage="in_progress",
+            details=review_data.feedback
         )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})

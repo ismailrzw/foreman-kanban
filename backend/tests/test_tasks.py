@@ -122,3 +122,68 @@ def test_deadlines_and_overdue(client, setup_mocks):
     # 5. Get overdue tasks as Employee (should fail 403)
     res = client.get("/api/tasks/overdue", headers=headers_emp)
     assert res.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_audit_trail(client, setup_mocks):
+    db = setup_mocks
+    headers_mgr = {"Authorization": "Bearer manager-token"}
+    headers_emp = {"Authorization": "Bearer employee-token"}
+
+    # 1. Create a task (Manager)
+    create_payload = {
+        "title": "Audit Test Task",
+        "description": "Verification of logging",
+        "assigned_to": "uid-emp",
+        "complexity": 3
+    }
+    res = client.post("/api/tasks", json=create_payload, headers=headers_mgr)
+    assert res.status_code == status.HTTP_201_CREATED
+    task = res.json()
+    task_id = task["id"]
+
+    # 2. Start the task (Employee)
+    client.post(f"/api/tasks/{task_id}/start", headers=headers_emp)
+
+    # 3. Submit the task (Employee)
+    client.post(f"/api/tasks/{task_id}/submit", headers=headers_emp)
+
+    # 4. Reject the task (Manager)
+    reject_payload = {
+        "action": "reject",
+        "feedback": "Needs code cleanup."
+    }
+    client.post(f"/api/tasks/{task_id}/review", json=reject_payload, headers=headers_mgr)
+
+    # 5. Query task audit trail (Manager)
+    res = client.get(f"/api/tasks/{task_id}/audit", headers=headers_mgr)
+    assert res.status_code == status.HTTP_200_OK
+    audit_trail = res.json()
+    
+    assert len(audit_trail) == 4
+    assert audit_trail[0]["action"] == "created"
+    assert audit_trail[0]["new_stage"] == "todo"
+    
+    assert audit_trail[1]["action"] == "started"
+    assert audit_trail[1]["previous_stage"] == "todo"
+    assert audit_trail[1]["new_stage"] == "in_progress"
+    
+    assert audit_trail[2]["action"] == "submitted"
+    assert audit_trail[2]["new_stage"] == "submitted_for_review"
+    
+    assert audit_trail[3]["action"] == "rejected"
+    assert audit_trail[3]["new_stage"] == "in_progress"
+    assert audit_trail[3]["details"] == "Needs code cleanup."
+
+    # 6. Query recent audit logs (Manager)
+    res = client.get("/api/audit/recent", headers=headers_mgr)
+    assert res.status_code == status.HTTP_200_OK
+    recent_logs = res.json()
+    assert len(recent_logs) >= 4
+
+    # 7. Query audit endpoints (Employee - should fail 403)
+    res = client.get(f"/api/tasks/{task_id}/audit", headers=headers_emp)
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+
+    res = client.get("/api/audit/recent", headers=headers_emp)
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+
