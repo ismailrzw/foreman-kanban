@@ -7,11 +7,11 @@ on:
 env:
   PYTHON_VERSION: '3.12'
   NODE_VERSION: '20'
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
 jobs:
-  # ─── Backend Checks ───
   backend:
-    name: Backend — Lint, Test, Build
+    name: Backend — Lint, Test, Build & Push
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -43,21 +43,26 @@ jobs:
           MONGO_URI: mongodb://localhost:27017/foreman_test_db
           FIREBASE_SERVICE_ACCOUNT_PATH: ./tests/mock_sa.json
 
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image with caching
+      - name: Build and push backend Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          push: false
-          tags: foreman-backend:ci-${{ github.sha }}
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_USERNAME }}/foreman-backend:ci-${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
-  # ─── Frontend Checks ───
   frontend:
-    name: Frontend — Lint, Build
+    name: Frontend — Lint, Build & Push
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -88,17 +93,23 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: '000000'
           VITE_FIREBASE_APP_ID: 'ci-app-id'
 
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image with caching
+      - name: Build and push frontend Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          push: false
-          tags: foreman-frontend:ci-${{ github.sha }}
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_USERNAME }}/foreman-frontend:ci-${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           build-args: |
             VITE_API_URL=https://placeholder.onrender.com
             VITE_FIREBASE_API_KEY=placeholder
@@ -108,19 +119,33 @@ jobs:
             VITE_FIREBASE_MESSAGING_SENDER_ID=000000
             VITE_FIREBASE_APP_ID=placeholder
 
-  # ─── Security Scan ───
   security-scan:
     name: Security Scan
     needs: [backend, frontend]
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Pull backend image from DockerHub
+        run: |
+          docker pull ${{ env.DOCKERHUB_USERNAME }}/foreman-backend:ci-${{ github.sha }}
+
+      - name: Pull frontend image from DockerHub
+        run: |
+          docker pull ${{ env.DOCKERHUB_USERNAME }}/foreman-frontend:ci-${{ github.sha }}
+
       - name: Run backend security scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'foreman-backend:ci-${{ github.sha }}'
+          image-ref: '${{ env.DOCKERHUB_USERNAME }}/foreman-backend:ci-${{ github.sha }}'
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
@@ -128,7 +153,7 @@ jobs:
       - name: Run frontend security scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'foreman-frontend:ci-${{ github.sha }}'
+          image-ref: '${{ env.DOCKERHUB_USERNAME }}/foreman-frontend:ci-${{ github.sha }}'
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
