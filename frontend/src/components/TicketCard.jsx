@@ -4,7 +4,7 @@
  * Includes stamp animation for approve/reject.
  */
 
-import React, { useState, useRef } from 'react';
+import { useRef } from 'react';
 
 function ComplexityDots({ level }) {
   return (
@@ -17,10 +17,10 @@ function ComplexityDots({ level }) {
 }
 
 export default function TicketCard({ task, userRole, onStart, onSubmit }) {
-  const [stamped, setStamped] = useState(null); // 'approved' or 'rejected' or null
   const cardRef = useRef(null);
 
   const isRework = task.is_rejected && task.stage !== 'submitted_for_review' && task.stage !== 'done';
+  const stamped = task.stage === 'done' ? 'approved' : (isRework ? 'rejected' : null);
 
   const assigneeName = task.assigned_to_name || 'Unknown';
   const initials = assigneeName
@@ -29,6 +29,20 @@ export default function TicketCard({ task, userRole, onStart, onSubmit }) {
     .join('')
     .toUpperCase()
     .slice(0, 2);
+
+  function handleDragStart(e) {
+    if (task.stage === 'done') {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({ taskId: task.id, fromStage: task.stage }));
+    e.currentTarget.classList.add('is-dragging');
+  }
+
+  function handleDragEnd(e) {
+    e.currentTarget.classList.remove('is-dragging');
+  }
 
   function renderAction() {
     if (userRole !== 'employee') return null;
@@ -64,7 +78,13 @@ export default function TicketCard({ task, userRole, onStart, onSubmit }) {
   }
 
   return (
-    <div className={`ticket ${isRework ? 'is-rework' : ''}`} ref={cardRef}>
+    <div 
+      className={`ticket ${isRework ? 'is-rework' : ''}`} 
+      ref={cardRef}
+      draggable={task.stage !== 'done'}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
       <div className="pin"></div>
       <div className="ticket-id">{task.id?.slice(-8) || 'N/A'}</div>
       <div className="ticket-title">{task.title}</div>

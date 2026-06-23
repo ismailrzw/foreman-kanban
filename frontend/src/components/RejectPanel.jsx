@@ -3,7 +3,7 @@
  * Extracted as a reusable component.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 export default function RejectPanel({ taskId, onReject, onCancel }) {
   const [reason, setReason] = useState('');

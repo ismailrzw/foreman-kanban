@@ -4,9 +4,10 @@
  * Employee CANNOT: create tasks, confirm/reject, see other employees' tasks.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import BoardColumn from '../components/BoardColumn';
+import WorkloadView from '../components/WorkloadView';
 import { useToast } from '../components/Toast';
 
 const STAGES = ['todo', 'in_progress', 'submitted_for_review', 'done'];
@@ -14,6 +15,7 @@ const STAGES = ['todo', 'in_progress', 'submitted_for_review', 'done'];
 export default function EmployeeDashboard() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('board'); // 'board' or 'workload'
   const showToast = useToast();
 
   const fetchTasks = useCallback(async () => {
@@ -27,6 +29,7 @@ export default function EmployeeDashboard() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
   async function handleStart(taskId) {
@@ -35,6 +38,7 @@ export default function EmployeeDashboard() {
       showToast('Job started — moved to In Progress.');
       fetchTasks();
     } catch (err) {
+      console.error('Failed to start task:', err);
       showToast('Failed to start task.');
     }
   }
@@ -45,7 +49,18 @@ export default function EmployeeDashboard() {
       showToast('Submitted for inspection — awaiting manager review.');
       fetchTasks();
     } catch (err) {
+      console.error('Failed to submit task:', err);
       showToast('Failed to submit task.');
+    }
+  }
+
+  async function handleDropCard(taskId, fromStage, toStage) {
+    if (fromStage === 'todo' && toStage === 'in_progress') {
+      await handleStart(taskId);
+    } else if (fromStage === 'in_progress' && toStage === 'submitted_for_review') {
+      await handleSubmit(taskId);
+    } else {
+      showToast(`Cannot move task from '${fromStage}' to '${toStage}' directly.`);
     }
   }
 
@@ -70,20 +85,45 @@ export default function EmployeeDashboard() {
             signs off before it counts as done.
           </p>
         </div>
+        <div className="view-toggle">
+          <button
+            className={`btn btn-sm ${viewMode === 'board' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setViewMode('board')}
+          >
+            Board View
+          </button>
+          <button
+            className={`btn btn-sm ${viewMode === 'workload' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setViewMode('workload')}
+            style={{ marginLeft: '8px' }}
+          >
+            Workload View
+          </button>
+        </div>
       </div>
 
-      <div className="board">
-        {STAGES.map((stage) => (
-          <BoardColumn
-            key={stage}
-            stage={stage}
-            tasks={tasks.filter((t) => t.stage === stage)}
-            userRole="employee"
-            onStart={handleStart}
-            onSubmit={handleSubmit}
-          />
-        ))}
-      </div>
+      {viewMode === 'board' ? (
+        <div className="board">
+          {STAGES.map((stage) => (
+            <BoardColumn
+              key={stage}
+              stage={stage}
+              tasks={tasks.filter((t) => t.stage === stage)}
+              userRole="employee"
+              onStart={handleStart}
+              onSubmit={handleSubmit}
+              onDropCard={handleDropCard}
+            />
+          ))}
+        </div>
+      ) : (
+        <WorkloadView
+          tasks={tasks}
+          userRole="employee"
+          onStart={handleStart}
+          onSubmit={handleSubmit}
+        />
+      )}
     </div>
   );
 }

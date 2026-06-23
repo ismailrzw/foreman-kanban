@@ -3,7 +3,7 @@
  * Manager sees ALL tasks across all employees.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import BoardColumn from '../components/BoardColumn';
 import InspectionQueue from '../components/InspectionQueue';
@@ -29,6 +29,7 @@ export default function ManagerDashboard() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
   const pendingInspection = tasks.filter((t) => t.stage === 'submitted_for_review');
@@ -41,6 +42,7 @@ export default function ManagerDashboard() {
       showToast('Task signed off and marked Done.');
       fetchTasks();
     } catch (err) {
+      console.error('Failed to confirm task:', err);
       showToast('Failed to confirm task.');
     }
   }
@@ -54,7 +56,23 @@ export default function ManagerDashboard() {
       showToast('Task sent back for revision.');
       fetchTasks();
     } catch (err) {
+      console.error('Failed to reject task:', err);
       showToast('Failed to reject task.');
+    }
+  }
+
+  async function handleDropCard(taskId, fromStage, toStage) {
+    if (fromStage === 'submitted_for_review' && toStage === 'done') {
+      await handleConfirm(taskId);
+    } else if (fromStage === 'submitted_for_review' && toStage === 'in_progress') {
+      const feedback = window.prompt(
+        "What needs to be fixed before this can be signed off?",
+        "Needs another pass before it can be signed off."
+      );
+      if (feedback === null) return; // User cancelled
+      await handleReject(taskId, feedback.trim());
+    } else {
+      showToast(`Invalid move from '${fromStage}' to '${toStage}' for Manager.`);
     }
   }
 
@@ -94,6 +112,7 @@ export default function ManagerDashboard() {
             stage={stage}
             tasks={tasks.filter((t) => t.stage === stage)}
             userRole="manager"
+            onDropCard={handleDropCard}
           />
         ))}
       </div>
