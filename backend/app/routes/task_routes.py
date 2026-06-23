@@ -41,6 +41,12 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
     if users_cache and doc.get("assigned_to") in users_cache:
         assigned_to_name = users_cache[doc["assigned_to"]]
 
+    deadline = doc.get("deadline")
+    is_overdue = False
+    if deadline and doc.get("stage") != "done":
+        now = datetime.now(timezone.utc) if deadline.tzinfo else datetime.now()
+        is_overdue = deadline < now
+
     return TaskResponse(
         id=str(doc["_id"]),
         title=doc["title"],
@@ -53,10 +59,14 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
         rejection_feedback=doc.get("rejection_feedback"),
         revision_history=doc.get("revision_history", []),
         revision_count=doc.get("revision_count", 0),
+        deadline=deadline,
+        is_overdue=is_overdue,
+        completed_at=doc.get("completed_at"),
         created_by=doc["created_by"],
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],
     )
+
 
 
 
@@ -125,10 +135,15 @@ async def create_task(
         "stage": "todo",
         "is_rejected": False,
         "rejection_feedback": None,
+        "revision_history": [],
+        "revision_count": 0,
+        "deadline": task_data.deadline,
+        "completed_at": None,
         "created_by": current_user["firebase_uid"],
         "created_at": now,
         "updated_at": now,
     }
+
 
     result = await db.tasks.insert_one(doc)
     doc["_id"] = result.inserted_id
@@ -159,10 +174,9 @@ async def update_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
 
-    # Build update dict (only non-None fields)
-    update_fields = {
-        k: v for k, v in task_data.model_dump().items() if v is not None
-    }
+    # Build update dict (only explicitly set fields)
+    update_fields = task_data.model_dump(exclude_unset=True)
+
 
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update.")
@@ -349,9 +363,11 @@ async def review_task(
                 "stage": "done",
                 "is_rejected": False,
                 "rejection_feedback": None,
+                "completed_at": now,
                 "updated_at": now,
             }},
         )
+
 
     elif review_data.action == "reject":
         if not review_data.feedback:
@@ -395,6 +411,36 @@ async def review_task(
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
+
+
+# ─── OVERDUE TASKS (Manager only) ─────────────────────────────
+
+@router.get("/tasks/overdue", response_model=list[TaskResponse])
+async def get_overdue_tasks(
+    current_user: dict = Depends(require_role("manager")),
+):
+    """
+    Get all overdue tasks (Manager only).
+    """
+    db = get_database()
+    now = datetime.now(timezone.utc)
+
+    # Query non-done tasks with deadlines in the past
+    query = {
+        "stage": {"$ne": "done"},
+        "deadline": {"$ne": None, "$lt": now}
+    }
+
+    # Build a user name cache for assigned_to_name
+    users_cache = {}
+    async for user in db.users.find({"role": "employee"}):
+        users_cache[user["firebase_uid"]] = user["name"]
+
+    cursor = db.tasks.find(query).sort("deadline", 1)
+    tasks = []
+    async for doc in cursor:
+        tasks.append(task_doc_to_response(doc, users_cache))
+    return tasks
 
 
 # ─── TASK HISTORY (Manager only) ──────────────────────────────

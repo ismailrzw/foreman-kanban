@@ -125,12 +125,24 @@ class MockCollection:
                     if str(doc.get("_id")) != str(v) and doc.get("_id") != v:
                         match = False
                         break
+                elif isinstance(v, dict):
+                    # Handle MongoDB operators
+                    if "$ne" in v:
+                        if doc.get(k) == v["$ne"]:
+                            match = False
+                            break
+                    if "$lt" in v:
+                        doc_val = doc.get(k)
+                        if doc_val is None or doc_val >= v["$lt"]:
+                            match = False
+                            break
                 elif doc.get(k) != v:
                     match = False
                     break
             if match:
                 matched.append(doc)
         return matched
+
 
     async def aggregate(self, pipeline):
         # Implement dynamic python-based aggregation matching our endpoints
