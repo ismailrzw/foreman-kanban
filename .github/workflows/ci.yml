@@ -46,11 +46,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image with caching
+      - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: false
+          load: true   # ← CRITICAL: Loads image into local Docker daemon
           tags: foreman-backend:ci-${{ github.sha }}
           cache-from: type=gha
 
@@ -100,11 +101,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image with caching
+      - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: false
+          load: true   # ← CRITICAL: Loads image into local Docker daemon
           tags: foreman-frontend:ci-${{ github.sha }}
           cache-from: type=gha
           build-args: |
