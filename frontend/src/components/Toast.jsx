@@ -1,10 +1,11 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Toast notification component.
  * Shows a brief message at the bottom of the screen.
  * Auto-hides after 2.6 seconds.
  */
 
-import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 
 const ToastContext = createContext(null);
 

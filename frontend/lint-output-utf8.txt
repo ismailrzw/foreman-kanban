@@ -1,0 +1,104 @@
+﻿
+> frontend@0.0.0 lint
+> eslint .
+
+
+D:\GitHub\foreman-kanban\frontend\src\App.jsx
+  9:8  error  'React' is defined but never used  no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\components\AuthScreen.jsx
+  6:8  error  'React' is defined but never used  no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\components\BoardColumn.jsx
+  6:8  error  'React' is defined but never used  no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\components\InspectionQueue.jsx
+  8:8  error  'React' is defined but never used  no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\components\NewTaskModal.jsx
+  5:8  error  'React' is defined but never used  no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\components\NotificationBell.jsx
+    7:8  error    'React' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             no-unused-vars
+   23:9  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  21 |       const stored = localStorage.getItem(`notifications_${userProfile.firebase_uid}`);
+  22 |       if (stored) {
+> 23 |         setNotifications(JSON.parse(stored));
+     |         ^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  24 |       }
+  25 |     }
+  26 |   }, [userProfile]);  react-hooks/set-state-in-effect
+  123:6  warning  React Hook useEffect has a missing dependency: 'saveNotifications'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          react-hooks/exhaustive-deps
+
+D:\GitHub\foreman-kanban\frontend\src\components\RejectPanel.jsx
+  6:8  error  'React' is defined but never used  no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\components\TicketCard.jsx
+   7:8   error  'React' is defined but never used                no-unused-vars
+  20:19  error  'setStamped' is assigned a value but never used  no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\components\Toast.jsx
+   7:8   error  'React' is defined but never used                                                                                               no-unused-vars
+  11:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+D:\GitHub\foreman-kanban\frontend\src\components\Topbar.jsx
+  5:8  error  'React' is defined but never used  no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\components\WorkloadView.jsx
+  6:8  error  'React' is defined but never used  no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\contexts\AuthContext.jsx
+  10:8   error  'React' is defined but never used                                                                                               no-unused-vars
+  23:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  42:18  error  'err' is defined but never used                                                                                                 no-unused-vars
+  65:11  error  'token' is assigned a value but never used                                                                                      no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\pages\EmployeeDashboard.jsx
+   7:8   error  'React' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     no-unused-vars
+  32:21  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  30 |   }, []);
+  31 |
+> 32 |   useEffect(() => { fetchTasks(); }, [fetchTasks]);
+     |                     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  33 |
+  34 |   async function handleStart(taskId) {
+  35 |     try {  react-hooks/set-state-in-effect
+  39:14  error  'err' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       no-unused-vars
+  49:14  error  'err' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       no-unused-vars
+
+D:\GitHub\foreman-kanban\frontend\src\pages\ManagerDashboard.jsx
+   6:8   error  'React' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         no-unused-vars
+  32:21  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  30 |   }, []);
+  31 |
+> 32 |   useEffect(() => { fetchTasks(); }, [fetchTasks]);
+     |                     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  33 |
+  34 |   const pendingInspection = tasks.filter((t) => t.stage === 'submitted_for_review');
+  35 |  react-hooks/set-state-in-effect
+  43:14  error  'err' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           no-unused-vars
+  56:14  error  'err' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           no-unused-vars
+
+Γ£û 27 problems (26 errors, 1 warning)
+

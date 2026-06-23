@@ -6,13 +6,16 @@
  * - Logged in as Employee → EmployeeDashboard
  */
 
-import React from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './components/Toast';
 import AuthScreen from './components/AuthScreen';
 import Topbar from './components/Topbar';
 import ManagerDashboard from './pages/ManagerDashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
+import { initTheme } from './utils/theme';
+
+// Set up theme instantly to prevent color flashing
+initTheme();
 
 function AppContent() {
   const { currentUser, userProfile, loading } = useAuth();
@@ -49,4 +52,4 @@ export default function App() {
       </ToastProvider>
     </AuthProvider>
   );
-}// This should fail
+}

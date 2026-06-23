@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Auth Context — provides Firebase auth state + user role to all components.
  *
@@ -7,7 +8,7 @@
  *    loading, login, signup, logout functions
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import {
   auth,
   createUserWithEmailAndPassword,
@@ -40,8 +41,7 @@ export function AuthProvider({ children }) {
           const res = await api.get('/api/me');
           setUserProfile(res.data);
         } catch (err) {
-          // User exists in Firebase but not registered in our DB yet
-          // This happens between Firebase signup and /api/register call
+          console.warn('User exists in Firebase but not registered in our DB yet:', err);
           setUserProfile(null);
         }
       } else {
@@ -62,7 +62,7 @@ export function AuthProvider({ children }) {
     await sendEmailVerification(user);
 
     // Register in our backend (creates MongoDB user doc with role)
-    const token = await user.getIdToken();
+    await user.getIdToken();
     const res = await api.post('/api/register', {
       firebase_uid: user.uid,
       email: email,

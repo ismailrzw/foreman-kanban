@@ -409,6 +409,3222 @@ mongodb+srv://foreman-admin:<password>@foreman-cluster.xxxxx.mongodb.net/?retryW
 
 ---
 
+## 1.3 — Backend: Full FastAPI Application
+
+### `backend/requirements.txt`
+
+```txt
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+motor==3.6.0
+pymongo==4.10.1
+python-dotenv==1.0.1
+firebase-admin==6.6.0
+pydantic==2.10.3
+httpx==0.28.1
+pytest==8.3.4
+pytest-asyncio==0.24.0
+```
+
+### `backend/.env.example`
+
+```env
+MONGO_URI=mongodb+srv://foreman-admin:YOUR_PASSWORD@foreman-cluster.xxxxx.mongodb.net/foreman_db?retryWrites=true&w=majority
+FIREBASE_SERVICE_ACCOUNT_PATH=./serviceAccountKey.json
+FRONTEND_URL=http://localhost:5173
+```
+
+> **Ismail:** Create `backend/.env` (not `.env.example`) with real values. **Never commit `.env`.**
+
+### `backend/app/__init__.py`
+
+```python
+# Package marker — intentionally empty
+```
+
+### `backend/app/config.py`
+
+```python
+"""
+Configuration module — loads environment variables with sensible defaults.
+All secrets (Mongo URI, Firebase SA path) come from .env, never hardcoded.
+"""
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# MongoDB
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/foreman_db")
+
+# Firebase Admin SDK service account
+FIREBASE_SERVICE_ACCOUNT_PATH = os.getenv(
+    "FIREBASE_SERVICE_ACCOUNT_PATH", "./serviceAccountKey.json"
+)
+
+# CORS — allowed frontend origin
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+```
+
+### `backend/app/firebase_auth.py`
+
+```python
+"""
+Firebase Admin SDK initialization and ID token verification.
+This module:
+1. Initializes the Firebase Admin SDK using the service account JSON
+2. Provides a FastAPI dependency that extracts and verifies the Firebase ID token
+   from the Authorization header, returning the decoded token (with uid, email, etc.)
+"""
+
+import firebase_admin
+from firebase_admin import credentials, auth
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.config import FIREBASE_SERVICE_ACCOUNT_PATH
+
+# Initialize Firebase Admin SDK (runs once at import time)
+cred = credentials.Certificate(FIREBASE_SERVICE_ACCOUNT_PATH)
+firebase_admin.initialize_app(cred)
+
+# FastAPI security scheme — expects "Bearer <token>" in Authorization header
+bearer_scheme = HTTPBearer()
+
+
+async def verify_firebase_token(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> dict:
+    """
+    FastAPI dependency: extracts the Bearer token from the Authorization header,
+    verifies it with Firebase Admin SDK, and returns the decoded token dict.
+
+    Returns dict with keys: uid, email, email_verified, etc.
+    Raises 401 if token is invalid/expired/missing.
+    """
+    token = credentials.credentials
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token
+    except auth.InvalidIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Firebase ID token.",
+        )
+    except auth.ExpiredIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Firebase ID token has expired. Please re-authenticate.",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Could not verify credentials: {str(e)}",
+        )
+```
+
+### `backend/app/models/__init__.py`
+
+```python
+# Package marker
+```
+
+### `backend/app/models/user.py`
+
+```python
+"""
+User model — links a Firebase UID to an application-level role.
+When a user signs up via Firebase Auth on the frontend, the frontend
+calls POST /api/register which creates this document in MongoDB.
+"""
+
+from pydantic import BaseModel, Field
+from typing import Literal
+
+
+class UserCreate(BaseModel):
+    """Schema for user registration request body."""
+    firebase_uid: str = Field(..., description="Firebase Auth UID from the decoded token")
+    email: str = Field(..., description="User's email address")
+    name: str = Field(..., min_length=2, description="Display name")
+    role: Literal["manager", "employee"] = Field(..., description="Application role")
+
+
+class UserResponse(BaseModel):
+    """Schema for user data returned by the API."""
+    firebase_uid: str
+    email: str
+    name: str
+    role: Literal["manager", "employee"]
+
+
+class UserInDB(BaseModel):
+    """Internal representation stored in MongoDB."""
+    firebase_uid: str
+    email: str
+    name: str
+    role: Literal["manager", "employee"]
+```
+
+### `backend/app/models/task.py`
+
+```python
+"""
+Task model — the core domain object.
+Stages represent the Kanban column: todo → in_progress → submitted_for_review → done
+The submitted_for_review → done/rejected transition mirrors a PR review/merge flow.
+"""
+
+from pydantic import BaseModel, Field
+from typing import Literal, Optional
+from datetime import datetime
+
+
+# Valid stage values — these map to Kanban columns
+StageType = Literal["todo", "in_progress", "submitted_for_review", "done"]
+
+# Valid complexity levels
+ComplexityType = Literal[1, 2, 3]
+
+
+class TaskCreate(BaseModel):
+    """Schema for creating a new task (Manager only)."""
+    title: str = Field(..., min_length=1, max_length=200, description="Task title")
+    description: str = Field(default="", max_length=1000, description="Task description")
+    assigned_to: str = Field(..., description="Firebase UID of the assigned employee")
+    complexity: ComplexityType = Field(default=2, description="1=Low, 2=Medium, 3=High")
+
+
+class TaskUpdate(BaseModel):
+    """Schema for updating a task (Manager only)."""
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    assigned_to: Optional[str] = None
+    complexity: Optional[ComplexityType] = None
+    stage: Optional[StageType] = None
+
+
+class TaskSubmitForReview(BaseModel):
+    """Schema for employee submitting task for review (empty body — action-based)."""
+    pass
+
+
+class TaskReviewAction(BaseModel):
+    """Schema for manager confirming or rejecting a submission."""
+    action: Literal["confirm", "reject"] = Field(..., description="confirm or reject")
+    feedback: Optional[str] = Field(
+        None, max_length=500, description="Required when rejecting — reason for rejection"
+    )
+
+
+class TaskResponse(BaseModel):
+    """Schema for task data returned by the API."""
+    id: str = Field(..., description="MongoDB document _id as string")
+    title: str
+    description: str
+    assigned_to: str
+    assigned_to_name: Optional[str] = None
+    complexity: ComplexityType
+    stage: StageType
+    is_rejected: bool = False
+    rejection_feedback: Optional[str] = None
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+```
+
+### `backend/app/utils/__init__.py`
+
+```python
+# Package marker
+```
+
+### `backend/app/utils/status_machine.py`
+
+```python
+"""
+Task Status Machine — the CORE FEATURE of the application.
+
+This module enforces legal status transitions for tasks, analogous to a
+Pull Request review/merge workflow:
+
+  Employee submits work → Manager inspects → Manager confirms (merge) or rejects (request changes)
+
+Legal transitions:
+  todo              → in_progress         (Employee starts working)
+  in_progress       → submitted_for_review (Employee submits for inspection)
+  submitted_for_review → done             (Manager confirms/approves)
+  submitted_for_review → in_progress      (Manager rejects — sends back for rework)
+
+Illegal transitions (examples):
+  todo → done                              (Can't skip steps)
+  submitted_for_review → done BY EMPLOYEE  (Can't self-approve)
+  done → anything                          (Done is terminal)
+"""
+
+from typing import Literal
+
+# Define the allowed transitions as a dict: current_stage → set of valid next stages
+ALLOWED_TRANSITIONS = {
+    "todo": {"in_progress"},
+    "in_progress": {"submitted_for_review"},
+    "submitted_for_review": {"done", "in_progress"},  # done = confirm, in_progress = reject
+    "done": set(),  # Terminal state — no transitions out
+}
+
+# Define WHO can trigger each transition
+# Key: (from_stage, to_stage) → required role
+TRANSITION_ROLES = {
+    ("todo", "in_progress"): "employee",
+    ("in_progress", "submitted_for_review"): "employee",
+    ("submitted_for_review", "done"): "manager",          # Only manager can confirm
+    ("submitted_for_review", "in_progress"): "manager",   # Only manager can reject
+}
+
+
+def validate_transition(
+    current_stage: str,
+    new_stage: str,
+    user_role: Literal["manager", "employee"],
+) -> tuple[bool, str]:
+    """
+    Validates whether a stage transition is legal for the given user role.
+
+    Args:
+        current_stage: The task's current stage
+        new_stage: The proposed new stage
+        user_role: The role of the user attempting the transition
+
+    Returns:
+        Tuple of (is_valid, error_message).
+        If valid: (True, "")
+        If invalid: (False, "Human-readable error explaining why")
+    """
+    # Check if the transition itself is legal
+    allowed = ALLOWED_TRANSITIONS.get(current_stage, set())
+    if new_stage not in allowed:
+        return (
+            False,
+            f"Cannot move task from '{current_stage}' to '{new_stage}'. "
+            f"Allowed transitions from '{current_stage}': {allowed or 'none (terminal state)'}.",
+        )
+
+    # Check if the user's role is authorized for this transition
+    required_role = TRANSITION_ROLES.get((current_stage, new_stage))
+    if required_role and required_role != user_role:
+        return (
+            False,
+            f"Only a {required_role} can move a task from '{current_stage}' to '{new_stage}'. "
+            f"You are logged in as a {user_role}.",
+        )
+
+    return (True, "")
+```
+
+### `backend/app/middleware/__init__.py`
+
+```python
+# Package marker
+```
+
+### `backend/app/middleware/role_guard.py`
+
+```python
+"""
+Role-based access control middleware for FastAPI.
+
+Provides `require_role()` — a dependency factory that:
+1. Verifies the Firebase ID token (via verify_firebase_token)
+2. Looks up the user's role in MongoDB
+3. Checks that the role matches the required role
+4. Returns the full user document if authorized, or 403 if not
+
+Usage in routes:
+    @router.post("/tasks", dependencies=[Depends(require_role("manager"))])
+    async def create_task(...):
+        ...
+
+    # Or to get the user document:
+    @router.get("/my-tasks")
+    async def my_tasks(user=Depends(require_role("employee"))):
+        # user is the full MongoDB user document
+        ...
+"""
+
+from fastapi import Depends, HTTPException, status
+from app.firebase_auth import verify_firebase_token
+from app.main import get_database
+
+
+def require_role(required_role: str = None):
+    """
+    Factory that returns a FastAPI dependency.
+    If required_role is None, any authenticated user is allowed.
+    If required_role is specified, only users with that role can access.
+    """
+
+    async def role_dependency(
+        decoded_token: dict = Depends(verify_firebase_token),
+    ) -> dict:
+        """
+        Inner dependency:
+        1. Gets the Firebase UID from the decoded token
+        2. Looks up the user in MongoDB
+        3. Checks role if required
+        4. Returns the user document
+        """
+        db = get_database()
+        uid = decoded_token["uid"]
+
+        # Look up user in MongoDB by Firebase UID
+        user = await db.users.find_one({"firebase_uid": uid})
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found. Please complete registration first.",
+            )
+
+        # Check role if required
+        if required_role and user.get("role") != required_role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. This endpoint requires the '{required_role}' role. "
+                       f"Your role is '{user.get('role')}'.",
+            )
+
+        # Convert ObjectId to string for downstream use
+        user["_id"] = str(user["_id"])
+        return user
+
+    return role_dependency
+```
+
+### `backend/app/routes/__init__.py`
+
+```python
+# Package marker
+```
+
+### `backend/app/routes/auth_routes.py`
+
+```python
+"""
+Auth routes — handles user registration after Firebase signup.
+
+Flow:
+1. User signs up via Firebase Auth on the frontend (creates Firebase account)
+2. Frontend calls POST /api/register with the Firebase ID token + chosen role
+3. This route creates a user document in MongoDB linking Firebase UID → role
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from app.firebase_auth import verify_firebase_token
+from app.models.user import UserCreate, UserResponse
+from app.main import get_database
+
+router = APIRouter(prefix="/api", tags=["auth"])
+
+
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def register_user(
+    user_data: UserCreate,
+    decoded_token: dict = Depends(verify_firebase_token),
+):
+    """
+    Register a new user after Firebase signup.
+    Links the Firebase UID to a role in MongoDB.
+
+    - Requires a valid Firebase ID token in the Authorization header
+    - The firebase_uid in the body must match the token's uid (security check)
+    - Creates a user document in the 'users' collection
+    """
+    db = get_database()
+
+    # Security check: the UID in the request body must match the authenticated token
+    if user_data.firebase_uid != decoded_token["uid"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token UID does not match the provided firebase_uid.",
+        )
+
+    # Check if user already exists
+    existing = await db.users.find_one({"firebase_uid": user_data.firebase_uid})
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User already registered.",
+        )
+
+    # Insert into MongoDB
+    user_doc = user_data.model_dump()
+    await db.users.insert_one(user_doc)
+
+    return UserResponse(**user_doc)
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user(
+    decoded_token: dict = Depends(verify_firebase_token),
+):
+    """
+    Get the currently authenticated user's profile.
+    Used by the frontend to determine role after login.
+    """
+    db = get_database()
+    user = await db.users.find_one({"firebase_uid": decoded_token["uid"]})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found. Please complete registration.",
+        )
+    return UserResponse(**user)
+```
+
+### `backend/app/routes/user_routes.py`
+
+```python
+"""
+User routes — manager-only endpoints for user management.
+Primary use: populating the "Assign to" dropdown when creating tasks.
+"""
+
+from fastapi import APIRouter, Depends
+from app.middleware.role_guard import require_role
+from app.models.user import UserResponse
+from app.main import get_database
+
+router = APIRouter(prefix="/api", tags=["users"])
+
+
+@router.get("/users/employees", response_model=list[UserResponse])
+async def list_employees(
+    current_user: dict = Depends(require_role("manager")),
+):
+    """
+    List all employees (Manager only).
+    Used to populate the assignment dropdown in the "New Work Order" modal.
+    """
+    db = get_database()
+    cursor = db.users.find({"role": "employee"})
+    employees = []
+    async for user in cursor:
+        employees.append(UserResponse(**user))
+    return employees
+```
+
+### `backend/app/routes/task_routes.py`
+
+```python
+"""
+Task routes — full CRUD + role-scoped actions.
+
+Manager can:
+  - Create tasks (POST /api/tasks)
+  - Update tasks (PUT /api/tasks/{id})
+  - Delete tasks (DELETE /api/tasks/{id})
+  - List all tasks (GET /api/tasks)
+  - Review submissions: confirm or reject (POST /api/tasks/{id}/review)
+
+Employee can:
+  - List their assigned tasks only (GET /api/tasks)
+  - Submit a task for review (POST /api/tasks/{id}/submit)
+
+The core PR-review-merge flow:
+  Employee calls POST /api/tasks/{id}/submit → stage becomes 'submitted_for_review'
+  Manager calls POST /api/tasks/{id}/review with action=confirm → stage becomes 'done'
+  Manager calls POST /api/tasks/{id}/review with action=reject → stage becomes 'in_progress'
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from bson import ObjectId
+from datetime import datetime, timezone
+from app.middleware.role_guard import require_role
+from app.models.task import (
+    TaskCreate,
+    TaskUpdate,
+    TaskResponse,
+    TaskReviewAction,
+)
+from app.utils.status_machine import validate_transition
+from app.main import get_database
+
+router = APIRouter(prefix="/api", tags=["tasks"])
+
+
+def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
+    """Convert a MongoDB task document to a TaskResponse schema."""
+    assigned_to_name = None
+    if users_cache and doc.get("assigned_to") in users_cache:
+        assigned_to_name = users_cache[doc["assigned_to"]]
+
+    return TaskResponse(
+        id=str(doc["_id"]),
+        title=doc["title"],
+        description=doc.get("description", ""),
+        assigned_to=doc["assigned_to"],
+        assigned_to_name=assigned_to_name,
+        complexity=doc["complexity"],
+        stage=doc["stage"],
+        is_rejected=doc.get("is_rejected", False),
+        rejection_feedback=doc.get("rejection_feedback"),
+        created_by=doc["created_by"],
+        created_at=doc["created_at"],
+        updated_at=doc["updated_at"],
+    )
+
+
+# ─── LIST TASKS ──────────────────────────────────────────────
+
+@router.get("/tasks", response_model=list[TaskResponse])
+async def list_tasks(
+    current_user: dict = Depends(require_role()),  # Any authenticated user
+):
+    """
+    List tasks — scoped by role:
+    - Manager: sees ALL tasks
+    - Employee: sees only tasks assigned to them
+    """
+    db = get_database()
+
+    # Build query based on role
+    if current_user["role"] == "manager":
+        query = {}
+    else:
+        query = {"assigned_to": current_user["firebase_uid"]}
+
+    # Build a user name cache for assigned_to_name
+    users_cache = {}
+    async for user in db.users.find({"role": "employee"}):
+        users_cache[user["firebase_uid"]] = user["name"]
+
+    # Fetch tasks sorted by creation date (newest first)
+    cursor = db.tasks.find(query).sort("created_at", -1)
+    tasks = []
+    async for doc in cursor:
+        tasks.append(task_doc_to_response(doc, users_cache))
+    return tasks
+
+
+# ─── CREATE TASK (Manager only) ─────────────────────────────
+
+@router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+async def create_task(
+    task_data: TaskCreate,
+    current_user: dict = Depends(require_role("manager")),
+):
+    """
+    Create a new task (Manager only).
+    Initial stage is always 'todo'.
+    """
+    db = get_database()
+
+    # Verify the assigned employee exists
+    employee = await db.users.find_one({
+        "firebase_uid": task_data.assigned_to,
+        "role": "employee",
+    })
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Assigned user not found or is not an employee.",
+        )
+
+    now = datetime.now(timezone.utc)
+    doc = {
+        "title": task_data.title,
+        "description": task_data.description,
+        "assigned_to": task_data.assigned_to,
+        "complexity": task_data.complexity,
+        "stage": "todo",
+        "is_rejected": False,
+        "rejection_feedback": None,
+        "created_by": current_user["firebase_uid"],
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    result = await db.tasks.insert_one(doc)
+    doc["_id"] = result.inserted_id
+
+    # Get assignee name for response
+    users_cache = {employee["firebase_uid"]: employee["name"]}
+    return task_doc_to_response(doc, users_cache)
+
+
+# ─── UPDATE TASK (Manager only) ─────────────────────────────
+
+@router.put("/tasks/{task_id}", response_model=TaskResponse)
+async def update_task(
+    task_id: str,
+    task_data: TaskUpdate,
+    current_user: dict = Depends(require_role("manager")),
+):
+    """
+    Update a task's metadata (Manager only).
+    For stage transitions, use the dedicated /submit and /review endpoints.
+    """
+    db = get_database()
+
+    if not ObjectId.is_valid(task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
+    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    # Build update dict (only non-None fields)
+    update_fields = {
+        k: v for k, v in task_data.model_dump().items() if v is not None
+    }
+
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update.")
+
+    # If stage is being changed, validate the transition
+    if "stage" in update_fields:
+        is_valid, error = validate_transition(
+            task["stage"], update_fields["stage"], current_user["role"]
+        )
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error)
+
+    update_fields["updated_at"] = datetime.now(timezone.utc)
+    await db.tasks.update_one(
+        {"_id": ObjectId(task_id)},
+        {"$set": update_fields},
+    )
+
+    updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    return task_doc_to_response(updated)
+
+
+# ─── DELETE TASK (Manager only) ──────────────────────────────
+
+@router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task(
+    task_id: str,
+    current_user: dict = Depends(require_role("manager")),
+):
+    """Delete a task (Manager only)."""
+    db = get_database()
+
+    if not ObjectId.is_valid(task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
+    result = await db.tasks.delete_one({"_id": ObjectId(task_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+
+# ─── SUBMIT FOR REVIEW (Employee only) ──────────────────────
+
+@router.post("/tasks/{task_id}/submit", response_model=TaskResponse)
+async def submit_for_review(
+    task_id: str,
+    current_user: dict = Depends(require_role("employee")),
+):
+    """
+    Employee submits a task for manager review.
+    This is the equivalent of "opening a Pull Request."
+
+    - Task must be in 'in_progress' stage
+    - Only the assigned employee can submit
+    - Transitions stage to 'submitted_for_review'
+    """
+    db = get_database()
+
+    if not ObjectId.is_valid(task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
+    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    # Only the assigned employee can submit
+    if task["assigned_to"] != current_user["firebase_uid"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only submit tasks assigned to you.",
+        )
+
+    # Validate transition using the status machine
+    is_valid, error = validate_transition(
+        task["stage"], "submitted_for_review", current_user["role"]
+    )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    # Perform the transition
+    now = datetime.now(timezone.utc)
+    await db.tasks.update_one(
+        {"_id": ObjectId(task_id)},
+        {"$set": {
+            "stage": "submitted_for_review",
+            "is_rejected": False,
+            "rejection_feedback": None,
+            "updated_at": now,
+        }},
+    )
+
+    updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    return task_doc_to_response(updated)
+
+
+# ─── START TASK (Employee only) ──────────────────────────────
+
+@router.post("/tasks/{task_id}/start", response_model=TaskResponse)
+async def start_task(
+    task_id: str,
+    current_user: dict = Depends(require_role("employee")),
+):
+    """
+    Employee starts working on a task.
+    Transitions stage from 'todo' to 'in_progress'.
+    """
+    db = get_database()
+
+    if not ObjectId.is_valid(task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
+    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    # Only the assigned employee can start
+    if task["assigned_to"] != current_user["firebase_uid"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only start tasks assigned to you.",
+        )
+
+    # Validate transition
+    is_valid, error = validate_transition(
+        task["stage"], "in_progress", current_user["role"]
+    )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    now = datetime.now(timezone.utc)
+    await db.tasks.update_one(
+        {"_id": ObjectId(task_id)},
+        {"$set": {"stage": "in_progress", "updated_at": now}},
+    )
+
+    updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    return task_doc_to_response(updated)
+
+
+# ─── REVIEW TASK (Manager only) ─────────────────────────────
+
+@router.post("/tasks/{task_id}/review", response_model=TaskResponse)
+async def review_task(
+    task_id: str,
+    review_data: TaskReviewAction,
+    current_user: dict = Depends(require_role("manager")),
+):
+    """
+    Manager reviews a submitted task — confirms (merge) or rejects (request changes).
+    This is the PR review/merge analog.
+
+    - Task must be in 'submitted_for_review' stage
+    - action='confirm' → moves to 'done' (merged)
+    - action='reject' → moves back to 'in_progress' (changes requested) with feedback
+    """
+    db = get_database()
+
+    if not ObjectId.is_valid(task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
+    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    if task["stage"] != "submitted_for_review":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot review a task in '{task['stage']}' stage. "
+                   f"Task must be in 'submitted_for_review' stage.",
+        )
+
+    now = datetime.now(timezone.utc)
+
+    if review_data.action == "confirm":
+        # Validate transition
+        is_valid, error = validate_transition(
+            task["stage"], "done", current_user["role"]
+        )
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error)
+
+        await db.tasks.update_one(
+            {"_id": ObjectId(task_id)},
+            {"$set": {
+                "stage": "done",
+                "is_rejected": False,
+                "rejection_feedback": None,
+                "updated_at": now,
+            }},
+        )
+
+    elif review_data.action == "reject":
+        if not review_data.feedback:
+            raise HTTPException(
+                status_code=400,
+                detail="Feedback is required when rejecting a task.",
+            )
+
+        # Validate transition
+        is_valid, error = validate_transition(
+            task["stage"], "in_progress", current_user["role"]
+        )
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error)
+
+        await db.tasks.update_one(
+            {"_id": ObjectId(task_id)},
+            {"$set": {
+                "stage": "in_progress",
+                "is_rejected": True,
+                "rejection_feedback": review_data.feedback,
+                "updated_at": now,
+            }},
+        )
+
+    updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    return task_doc_to_response(updated)
+```
+
+### `backend/app/main.py`
+
+```python
+"""
+FastAPI application entry point.
+Configures CORS, connects to MongoDB, and registers all route modules.
+"""
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from contextlib import asynccontextmanager
+from app.config import MONGO_URI, FRONTEND_URL
+
+# ─── Database Connection ─────────────────────────────────────
+
+_db_client: AsyncIOMotorClient = None
+_database = None
+
+
+def get_database():
+    """Returns the MongoDB database instance. Used by routes and middleware."""
+    return _database
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan manager — connects to MongoDB on startup,
+    disconnects on shutdown.
+    """
+    global _db_client, _database
+    _db_client = AsyncIOMotorClient(MONGO_URI)
+    _database = _db_client.get_default_database()
+    print(f"✔ Connected to MongoDB: {_database.name}")
+    yield
+    _db_client.close()
+    print("✔ MongoDB connection closed.")
+
+
+# ─── FastAPI App ──────────────────────────────────────────────
+
+app = FastAPI(
+    title="Foreman API",
+    description="Collaborative Kanban Task Board — Role-Based Backend",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# ─── CORS ─────────────────────────────────────────────────────
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        FRONTEND_URL,
+        "http://localhost:5173",    # Vite dev server
+        "http://localhost:3000",    # Alternative dev port
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ─── Register Routes ─────────────────────────────────────────
+# Import routes AFTER app creation to avoid circular imports
+
+from app.routes.auth_routes import router as auth_router
+from app.routes.task_routes import router as task_router
+from app.routes.user_routes import router as user_router
+
+app.include_router(auth_router)
+app.include_router(task_router)
+app.include_router(user_router)
+
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint for Docker/K8s probes."""
+    return {"status": "healthy", "service": "foreman-backend"}
+```
+
+---
+
+## 1.4 — Frontend: Full React Application
+
+### Initialize Vite Project
+
+```bash
+cd frontend
+npm create vite@latest . -- --template react
+npm install
+npm install firebase axios react-router-dom
+```
+
+### `frontend/.env.example`
+
+```env
+VITE_API_URL=http://localhost:8000
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=foreman-kanban.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=foreman-kanban
+VITE_FIREBASE_STORAGE_BUCKET=foreman-kanban.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abcdef123456
+```
+
+> **Ismail:** Create `frontend/.env` with real values. Share with team securely.
+
+### `frontend/vite.config.js`
+
+```javascript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
+  },
+});
+```
+
+### `frontend/public/index.html`
+
+> Note: Vite uses `index.html` at the project root. Replace the default with:
+
+### `frontend/index.html` (Root — Vite entry)
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Foreman — Collaborative Kanban Task Board with role-based approval workflow" />
+  <title>Foreman — Assign the work. Inspect what's done.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
+```
+
+### `frontend/src/main.jsx`
+
+```jsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+```
+
+### `frontend/src/index.css`
+
+```css
+/*
+ * FOREMAN DESIGN SYSTEM
+ * Industrial / workshop aesthetic — dark panels, amber accents,
+ * paper-textured ticket cards, pin-board metaphor.
+ *
+ * Fonts: Oswald (display), Inter (body), Courier Prime (mono/codes)
+ * Inspiration: foreman-prototype.html
+ */
+
+:root {
+  --bg: #15130F;
+  --bg-grid: #1B1812;
+  --panel: #1E1B16;
+  --panel-raised: #25211A;
+  --hairline: #3A3528;
+  --paper: #FAF6EC;
+  --paper-shadow: rgba(0, 0, 0, 0.45);
+  --ink: #2B2620;
+  --ink-soft: #6B6354;
+  --text: #ECE6D9;
+  --text-muted: #9A9281;
+  --stamp-red: #C1432A;
+  --stamp-green: #4C7A4C;
+  --amber: #E8A23D;
+  --violet: #8C7BC9;
+  --radius-card: 3px;
+  --font-display: 'Oswald', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'Courier Prime', monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, var(--bg-grid) 1.2px, transparent 1.2px);
+  background-size: 26px 26px;
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--amber);
+  color: var(--ink);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input, select, textarea {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+/* ─── UTILITY CLASSES ─── */
+
+.screen {
+  display: none;
+  min-height: 100vh;
+}
+
+.screen.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── BUTTONS ─── */
+
+.btn {
+  border: none;
+  font-family: var(--font-display);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-size: 13px;
+  padding: 13px 20px;
+  border-radius: 2px;
+  transition: transform 0.08s ease, filter 0.15s ease;
+  cursor: pointer;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--amber);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--text);
+}
+
+.btn-ghost:hover {
+  border-color: var(--text-muted);
+}
+
+.btn-block {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.btn-sm {
+  font-size: 11px;
+  padding: 8px 12px;
+}
+
+.btn-stamp-approve {
+  background: var(--stamp-green);
+  color: #fff;
+}
+
+.btn-stamp-reject {
+  background: transparent;
+  border: 1px solid var(--stamp-red);
+  color: var(--stamp-red);
+}
+
+/* ─── AUTH SCREEN ─── */
+
+.auth-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.auth-wrap {
+  width: 100%;
+  max-width: 980px;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 800px) {
+  .auth-wrap {
+    grid-template-columns: 1fr;
+  }
+  .auth-side {
+    display: none;
+  }
+}
+
+.auth-side {
+  padding: 48px 40px;
+  background:
+    repeating-linear-gradient(135deg, rgba(232, 162, 61, 0.05) 0 2px, transparent 2px 14px),
+    var(--panel-raised);
+  border-right: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mark .rivet {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3), 0 0 0 3px rgba(232, 162, 61, 0.15);
+}
+
+.brand-mark span {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.auth-side h1 {
+  font-family: var(--font-display);
+  font-size: 42px;
+  line-height: 1.08;
+  font-weight: 600;
+  margin-top: 60px;
+  letter-spacing: 0.5px;
+}
+
+.auth-side p {
+  margin-top: 18px;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.6;
+  max-width: 38ch;
+}
+
+.ledger {
+  margin-top: 40px;
+  border-top: 1px dashed var(--hairline);
+  padding-top: 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ledger b {
+  color: var(--amber);
+}
+
+.auth-form-area {
+  padding: 48px 44px;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-tabs {
+  display: flex;
+  border: 1px solid var(--hairline);
+  margin-bottom: 32px;
+}
+
+.auth-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  letter-spacing: 1.5px;
+  font-size: 13px;
+  text-transform: uppercase;
+  padding: 12px 0;
+  border-right: 1px solid var(--hairline);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.auth-tab:last-child {
+  border-right: none;
+}
+
+.auth-tab.is-active {
+  background: var(--amber);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ─── FORM FIELDS ─── */
+
+.field {
+  margin-bottom: 18px;
+}
+
+.field label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 7px;
+  font-weight: 600;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  color: var(--text);
+  padding: 11px 12px;
+  font-size: 14px;
+  border-radius: 2px;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--amber);
+  outline: none;
+}
+
+.field-error {
+  font-size: 12px;
+  color: var(--stamp-red);
+  margin-top: 6px;
+  font-family: var(--font-mono);
+}
+
+.field.has-error input {
+  border-color: var(--stamp-red);
+}
+
+/* ─── ROLE PICKER ─── */
+
+.role-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.role-opt {
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  padding: 14px 12px;
+  text-align: left;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.role-opt b {
+  display: block;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.role-opt small {
+  font-size: 11px;
+  line-height: 1.4;
+  display: block;
+}
+
+.role-opt.is-selected {
+  border-color: var(--amber);
+  background: rgba(232, 162, 61, 0.08);
+}
+
+.role-opt.is-selected b {
+  color: var(--amber);
+}
+
+.auth-foot {
+  margin-top: auto;
+  padding-top: 24px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ─── TOPBAR ─── */
+
+.topbar {
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel);
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar .brand-mark span {
+  font-size: 18px;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 26px;
+  background: var(--hairline);
+}
+
+.topbar-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+.id-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--hairline);
+  padding: 6px 12px 6px 6px;
+  background: var(--panel-raised);
+}
+
+.id-badge .avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--amber);
+  color: var(--ink);
+}
+
+.id-badge.role-employee .avatar {
+  background: var(--violet);
+  color: #15130F;
+}
+
+.id-badge .meta {
+  line-height: 1.25;
+}
+
+.id-badge .meta b {
+  font-size: 12.5px;
+  display: block;
+}
+
+.id-badge .meta small {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.icon-btn {
+  background: none;
+  border: 1px solid var(--hairline);
+  color: var(--text-muted);
+  width: 34px;
+  height: 34px;
+  border-radius: 2px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* ─── CONTENT AREA ─── */
+
+.content {
+  padding: 28px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 26px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page-head h2 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  letter-spacing: 0.5px;
+}
+
+.page-head p {
+  color: var(--text-muted);
+  font-size: 13.5px;
+  margin-top: 4px;
+}
+
+/* ─── INSPECTION QUEUE ─── */
+
+.queue-section {
+  margin-bottom: 34px;
+}
+
+.queue-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.queue-section-head h3 {
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.count-pill {
+  background: var(--amber);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.queue-item {
+  background: var(--panel-raised);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--amber);
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.queue-item .qi-main {
+  flex: 1;
+  min-width: 220px;
+}
+
+.queue-item .qi-main .qi-title {
+  font-weight: 600;
+  font-size: 14.5px;
+}
+
+.queue-item .qi-main .qi-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  font-family: var(--font-mono);
+}
+
+.queue-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.reject-panel {
+  width: 100%;
+  margin-top: 12px;
+  border-top: 1px dashed var(--hairline);
+  padding-top: 12px;
+}
+
+.reject-panel textarea {
+  width: 100%;
+  min-height: 64px;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  color: var(--text);
+  padding: 9px;
+  font-size: 13px;
+  border-radius: 2px;
+  resize: vertical;
+}
+
+.reject-panel .reject-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.empty-queue {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: 14px;
+  border: 1px dashed var(--hairline);
+  text-align: center;
+}
+
+/* ─── KANBAN BOARD ─── */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 1100px) {
+  .board {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .board {
+    grid-template-columns: 1fr;
+  }
+}
+
+.column {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.column-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.column-head h4 {
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.column-head .n {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.column-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+}
+
+.column-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+  padding: 18px 6px;
+}
+
+/* ─── TICKET CARD (Paper style) ─── */
+
+.ticket {
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 16px 14px 14px;
+  box-shadow: 0 6px 14px var(--paper-shadow);
+  border-radius: var(--radius-card);
+  transition: transform 0.15s ease;
+}
+
+.ticket:nth-child(odd) {
+  transform: rotate(-0.6deg);
+}
+
+.ticket:nth-child(even) {
+  transform: rotate(0.6deg);
+}
+
+.ticket:hover {
+  transform: rotate(0deg) translateY(-2px);
+}
+
+.ticket .pin {
+  position: absolute;
+  top: -7px;
+  left: 16px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff8a3d, #b5460f);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.5);
+}
+
+.ticket.is-rework .pin {
+  background: radial-gradient(circle at 35% 30%, #ff6e6e, #971f1f);
+}
+
+.ticket-id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  letter-spacing: 0.5px;
+}
+
+.ticket-title {
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  font-weight: 600;
+  margin-top: 4px;
+  line-height: 1.25;
+}
+
+.ticket-desc {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+.ticket-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  border-top: 1px dashed rgba(43, 38, 32, 0.25);
+  padding-top: 10px;
+}
+
+.complexity-dots {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 2px;
+}
+
+.complexity-dots .filled {
+  color: var(--stamp-red);
+}
+
+.complexity-dots .empty {
+  color: rgba(43, 38, 32, 0.2);
+}
+
+.ticket-assignee {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ticket-assignee .mini-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--violet);
+  color: #15130F;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ticket-assignee span {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.rework-note {
+  margin-top: 10px;
+  background: rgba(193, 67, 42, 0.08);
+  border-left: 2px solid var(--stamp-red);
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.rework-note b {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--stamp-red);
+  margin-bottom: 3px;
+  font-family: var(--font-mono);
+}
+
+.ticket-action {
+  margin-top: 12px;
+  width: 100%;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  font-family: var(--font-display);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-size: 11px;
+  padding: 9px 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.ticket-action:hover {
+  filter: brightness(1.3);
+}
+
+.ticket-action.is-disabled {
+  background: transparent;
+  border: 1px solid rgba(43, 38, 32, 0.3);
+  color: var(--ink-soft);
+  pointer-events: none;
+}
+
+.ticket-action.is-done {
+  background: transparent;
+  border: 1px solid var(--stamp-green);
+  color: var(--stamp-green);
+  pointer-events: none;
+}
+
+/* ─── STAMP ANIMATION ─── */
+
+.stamp-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.stamp-mark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 2px;
+  border: 3px solid var(--stamp-green);
+  color: var(--stamp-green);
+  padding: 6px 14px;
+  transform: rotate(-10deg) scale(0.4);
+  opacity: 0;
+  animation: stampIn 0.5s ease forwards;
+}
+
+.stamp-mark.reject {
+  border-color: var(--stamp-red);
+  color: var(--stamp-red);
+}
+
+@keyframes stampIn {
+  0% {
+    transform: rotate(-10deg) scale(2.4);
+    opacity: 0;
+  }
+  60% {
+    transform: rotate(-10deg) scale(0.9);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(-10deg) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp-mark {
+    animation: none;
+    opacity: 1;
+    transform: rotate(-10deg) scale(1);
+  }
+}
+
+/* ─── MODAL ─── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.modal-overlay.open {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  width: 100%;
+  max-width: 480px;
+  padding: 28px;
+}
+
+.modal h3 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.5px;
+  margin-bottom: 20px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* ─── TOAST ─── */
+
+.toast {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel-raised);
+  border: 1px solid var(--amber);
+  color: var(--text);
+  padding: 11px 20px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  border-radius: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 100;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-6px);
+}
+
+/* ─── LOADING STATE ─── */
+
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--hairline);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+```
+
+### `frontend/src/firebase.js`
+
+```javascript
+/**
+ * Firebase client SDK initialization.
+ * Uses environment variables from .env (prefixed with VITE_ for Vite).
+ */
+
+import { initializeApp } from 'firebase/app';
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendEmailVerification,
+  onAuthStateChanged,
+} from 'firebase/auth';
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+export {
+  auth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendEmailVerification,
+  onAuthStateChanged,
+};
+```
+
+### `frontend/src/utils/api.js`
+
+```javascript
+/**
+ * Axios instance pre-configured with:
+ * - Base URL from environment
+ * - Automatic Firebase ID token injection in Authorization header
+ *
+ * Every API call automatically includes the current user's token,
+ * so routes/components don't need to manage auth headers manually.
+ */
+
+import axios from 'axios';
+import { auth } from '../firebase';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+const api = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor — injects Firebase ID token
+api.interceptors.request.use(
+  async (config) => {
+    const user = auth.currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor — handle common errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response) {
+      const { status, data } = error.response;
+      if (status === 401) {
+        console.error('Authentication error:', data.detail);
+      } else if (status === 403) {
+        console.error('Authorization error:', data.detail);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+```
+
+### `frontend/src/contexts/AuthContext.jsx`
+
+```jsx
+/**
+ * Auth Context — provides Firebase auth state + user role to all components.
+ *
+ * On auth state change:
+ * 1. If user is logged in → fetch their profile from /api/me → get role
+ * 2. Provides: currentUser (Firebase user), userProfile (MongoDB doc with role),
+ *    loading, login, signup, logout functions
+ */
+
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  auth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendEmailVerification,
+  onAuthStateChanged,
+} from '../firebase';
+import api from '../utils/api';
+
+const AuthContext = createContext(null);
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
+}
+
+export function AuthProvider({ children }) {
+  const [currentUser, setCurrentUser] = useState(null);   // Firebase user object
+  const [userProfile, setUserProfile] = useState(null);    // { firebase_uid, email, name, role }
+  const [loading, setLoading] = useState(true);
+
+  // Listen for Firebase auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        try {
+          const res = await api.get('/api/me');
+          setUserProfile(res.data);
+        } catch (err) {
+          // User exists in Firebase but not registered in our DB yet
+          // This happens between Firebase signup and /api/register call
+          setUserProfile(null);
+        }
+      } else {
+        setUserProfile(null);
+      }
+      setLoading(false);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Sign up: create Firebase account → send verification email → register in backend
+  async function signup(email, password, name, role) {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+
+    // Send verification email
+    await sendEmailVerification(user);
+
+    // Register in our backend (creates MongoDB user doc with role)
+    const token = await user.getIdToken();
+    const res = await api.post('/api/register', {
+      firebase_uid: user.uid,
+      email: email,
+      name: name,
+      role: role,
+    });
+
+    setUserProfile(res.data);
+    return user;
+  }
+
+  // Login: sign in with Firebase → fetch profile from backend
+  async function login(email, password) {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+
+    const res = await api.get('/api/me');
+    setUserProfile(res.data);
+    return user;
+  }
+
+  // Logout
+  async function logout() {
+    await signOut(auth);
+    setUserProfile(null);
+  }
+
+  const value = {
+    currentUser,
+    userProfile,
+    loading,
+    signup,
+    login,
+    logout,
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+```
+
+### `frontend/src/components/Toast.jsx`
+
+```jsx
+/**
+ * Toast notification component.
+ * Shows a brief message at the bottom of the screen.
+ * Auto-hides after 2.6 seconds.
+ */
+
+import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
+
+const ToastContext = createContext(null);
+
+export function useToast() {
+  return useContext(ToastContext);
+}
+
+export function ToastProvider({ children }) {
+  const [message, setMessage] = useState('');
+  const [visible, setVisible] = useState(false);
+
+  const showToast = useCallback((msg) => {
+    setMessage(msg);
+    setVisible(true);
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      const timer = setTimeout(() => setVisible(false), 2600);
+      return () => clearTimeout(timer);
+    }
+  }, [visible, message]);
+
+  return (
+    <ToastContext.Provider value={showToast}>
+      {children}
+      <div className={`toast ${visible ? 'show' : ''}`} role="status" aria-live="polite">
+        {message}
+      </div>
+    </ToastContext.Provider>
+  );
+}
+```
+
+### `frontend/src/components/AuthScreen.jsx`
+
+```jsx
+/**
+ * Auth Screen — Login ("Clock In") and Signup ("New Hire") tabs.
+ * Matches the Foreman industrial aesthetic from the prototype.
+ */
+
+import React, { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { useToast } from './Toast';
+
+export default function AuthScreen() {
+  const [mode, setMode] = useState('login'); // 'login' or 'signup'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('manager');
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const { signup, login } = useAuth();
+  const showToast = useToast();
+
+  function validate() {
+    const errs = {};
+    if (!/^\S+@\S+\.\S+$/.test(email)) errs.email = 'Enter a valid email address.';
+    if (password.length < 6) errs.password = 'Password needs at least 6 characters.';
+    if (mode === 'signup' && name.length < 2) errs.name = "Tell us who's clocking in.";
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!validate()) return;
+    setSubmitting(true);
+
+    try {
+      if (mode === 'signup') {
+        await signup(email, password, name, role);
+        showToast('Account created — verification email sent.');
+      } else {
+        await login(email, password);
+        showToast('Welcome back!');
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.detail || err?.message || 'Something went wrong.';
+      setErrors({ form: msg });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="auth-container">
+      <div className="auth-wrap">
+        {/* Left side — branding */}
+        <div className="auth-side">
+          <div>
+            <div className="brand-mark">
+              <span className="rivet"></span>
+              <span>Foreman</span>
+            </div>
+            <h1>Assign the work.<br />Inspect what's done.</h1>
+            <p>
+              A job board for teams who need real sign-off before work counts
+              as finished — not just a checkbox.
+            </p>
+          </div>
+          <div className="ledger">
+            <div><b>01</b>&nbsp; Manager opens a work order, sets the complexity, assigns the crew.</div>
+            <div><b>02</b>&nbsp; Employee does the job, then submits it for inspection.</div>
+            <div><b>03</b>&nbsp; Manager confirms or sends it back — nothing is "done" until it's stamped.</div>
+          </div>
+        </div>
+
+        {/* Right side — form */}
+        <div className="auth-form-area">
+          <div className="auth-tabs">
+            <button
+              className={`auth-tab ${mode === 'login' ? 'is-active' : ''}`}
+              onClick={() => { setMode('login'); setErrors({}); }}
+              type="button"
+              id="tab-login"
+            >
+              Clock In
+            </button>
+            <button
+              className={`auth-tab ${mode === 'signup' ? 'is-active' : ''}`}
+              onClick={() => { setMode('signup'); setErrors({}); }}
+              type="button"
+              id="tab-signup"
+            >
+              New Hire
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} noValidate>
+            {mode === 'signup' && (
+              <div className={`field ${errors.name ? 'has-error' : ''}`}>
+                <label htmlFor="inp-name">Full name</label>
+                <input
+                  id="inp-name"
+                  type="text"
+                  placeholder="e.g. Saad Khan"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                {errors.name && <div className="field-error">{errors.name}</div>}
+              </div>
+            )}
+
+            <div className={`field ${errors.email ? 'has-error' : ''}`}>
+              <label htmlFor="inp-email">Work email</label>
+              <input
+                id="inp-email"
+                type="email"
+                placeholder="you@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              {errors.email && <div className="field-error">{errors.email}</div>}
+            </div>
+
+            <div className={`field ${errors.password ? 'has-error' : ''}`}>
+              <label htmlFor="inp-password">Password</label>
+              <input
+                id="inp-password"
+                type="password"
+                placeholder="At least 6 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              {errors.password && <div className="field-error">{errors.password}</div>}
+            </div>
+
+            {mode === 'signup' && (
+              <div className="field">
+                <label>You are a...</label>
+                <div className="role-pick">
+                  <button
+                    type="button"
+                    className={`role-opt ${role === 'manager' ? 'is-selected' : ''}`}
+                    onClick={() => setRole('manager')}
+                  >
+                    <b>Manager</b>
+                    <small>Assigns work orders, sets complexity, signs off finished jobs.</small>
+                  </button>
+                  <button
+                    type="button"
+                    className={`role-opt ${role === 'employee' ? 'is-selected' : ''}`}
+                    onClick={() => setRole('employee')}
+                  >
+                    <b>Employee</b>
+                    <small>Views assigned jobs and submits them for inspection.</small>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {errors.form && (
+              <div className="field-error" style={{ marginBottom: 12, display: 'block' }}>
+                {errors.form}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary btn-block"
+              disabled={submitting}
+              id="btn-auth-submit"
+            >
+              {submitting
+                ? 'Processing...'
+                : mode === 'signup'
+                  ? 'Create Account'
+                  : 'Clock In'}
+            </button>
+          </form>
+
+          <div className="auth-foot">
+            {mode === 'signup'
+              ? 'A verification email will be sent to confirm your address.'
+              : "Don't have an account? Click 'New Hire' above to register."}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### `frontend/src/components/Topbar.jsx`
+
+```jsx
+/**
+ * Top navigation bar — brand mark, page title, user badge, logout.
+ */
+
+import React from 'react';
+import { useAuth } from '../contexts/AuthContext';
+
+export default function Topbar() {
+  const { userProfile, logout } = useAuth();
+
+  if (!userProfile) return null;
+
+  const initials = userProfile.name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
+  const isManager = userProfile.role === 'manager';
+  const pageTitle = isManager ? 'Job Board — Manager View' : 'My Work Orders';
+
+  return (
+    <div className="topbar">
+      <div className="brand-mark">
+        <span className="rivet"></span>
+        <span>Foreman</span>
+      </div>
+      <div className="topbar-divider"></div>
+      <div className="topbar-title">{pageTitle}</div>
+      <div className="topbar-spacer"></div>
+
+      <div className={`id-badge ${isManager ? '' : 'role-employee'}`}>
+        <div className="avatar">{initials}</div>
+        <div className="meta">
+          <b>{userProfile.name}</b>
+          <small>{isManager ? 'Manager' : 'Employee'}</small>
+        </div>
+      </div>
+
+      <button className="icon-btn" title="Sign out" onClick={logout}>
+        ⏏
+      </button>
+    </div>
+  );
+}
+```
+
+### `frontend/src/components/TicketCard.jsx`
+
+```jsx
+/**
+ * Ticket Card — paper-style task card with pin, complexity dots,
+ * assignee avatar, and role-appropriate action buttons.
+ * Includes stamp animation for approve/reject.
+ */
+
+import React, { useState, useRef } from 'react';
+
+function ComplexityDots({ level }) {
+  return (
+    <div className="complexity-dots">
+      {[1, 2, 3].map((i) => (
+        <span key={i} className={i <= level ? 'filled' : 'empty'}>●</span>
+      ))}
+    </div>
+  );
+}
+
+export default function TicketCard({ task, userRole, onStart, onSubmit }) {
+  const [stamped, setStamped] = useState(null); // 'approved' or 'rejected' or null
+  const cardRef = useRef(null);
+
+  const isRework = task.is_rejected && task.stage !== 'submitted_for_review' && task.stage !== 'done';
+
+  const assigneeName = task.assigned_to_name || 'Unknown';
+  const initials = assigneeName
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
+  function renderAction() {
+    if (userRole !== 'employee') return null;
+
+    switch (task.stage) {
+      case 'todo':
+        return (
+          <button className="ticket-action" onClick={() => onStart?.(task.id)}>
+            Start Job
+          </button>
+        );
+      case 'in_progress':
+        return (
+          <button className="ticket-action" onClick={() => onSubmit?.(task.id)}>
+            {isRework ? 'Resubmit for Inspection' : 'Submit for Inspection'}
+          </button>
+        );
+      case 'submitted_for_review':
+        return (
+          <button className="ticket-action is-disabled">
+            Awaiting Inspection…
+          </button>
+        );
+      case 'done':
+        return (
+          <button className="ticket-action is-done">
+            Signed Off ✓
+          </button>
+        );
+      default:
+        return null;
+    }
+  }
+
+  return (
+    <div className={`ticket ${isRework ? 'is-rework' : ''}`} ref={cardRef}>
+      <div className="pin"></div>
+      <div className="ticket-id">{task.id?.slice(-8) || 'N/A'}</div>
+      <div className="ticket-title">{task.title}</div>
+      <div className="ticket-desc">{task.description}</div>
+
+      {isRework && task.rejection_feedback && (
+        <div className="rework-note">
+          <b>Sent back by Manager</b>
+          {task.rejection_feedback}
+        </div>
+      )}
+
+      <div className="ticket-meta">
+        <ComplexityDots level={task.complexity} />
+        <div className="ticket-assignee">
+          <div className="mini-avatar">{initials}</div>
+          <span>{assigneeName.split(' ')[0]}</span>
+        </div>
+      </div>
+
+      {renderAction()}
+
+      {stamped && (
+        <div className="stamp-overlay">
+          <div className={`stamp-mark ${stamped === 'rejected' ? 'reject' : ''}`}>
+            {stamped === 'rejected' ? 'SENT BACK' : 'APPROVED'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### `frontend/src/components/BoardColumn.jsx`
+
+```jsx
+/**
+ * Kanban board column — renders a list of TicketCards for a given stage.
+ */
+
+import React from 'react';
+import TicketCard from './TicketCard';
+
+const STAGE_LABELS = {
+  todo: 'To Do',
+  in_progress: 'In Progress',
+  submitted_for_review: 'For Inspection',
+  done: 'Signed Off',
+};
+
+export default function BoardColumn({ stage, tasks, userRole, onStart, onSubmit }) {
+  const label = STAGE_LABELS[stage] || stage;
+
+  return (
+    <div className="column">
+      <div className="column-head">
+        <h4>{label}</h4>
+        <span className="n">{tasks.length}</span>
+      </div>
+      <div className="column-body">
+        {tasks.length === 0 ? (
+          <div className="column-empty">No work orders here</div>
+        ) : (
+          tasks.map((task) => (
+            <TicketCard
+              key={task.id}
+              task={task}
+              userRole={userRole}
+              onStart={onStart}
+              onSubmit={onSubmit}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+### `frontend/src/components/InspectionQueue.jsx`
+
+```jsx
+/**
+ * Inspection Queue — Manager's "PR inbox" for tasks awaiting review.
+ * Shows confirm/reject buttons with inline reject-feedback panel.
+ */
+
+import React, { useState } from 'react';
+
+function ComplexityDots({ level }) {
+  return (
+    <span className="complexity-dots" style={{ display: 'inline' }}>
+      {[1, 2, 3].map((i) => (
+        <span key={i} className={i <= level ? 'filled' : 'empty'}>●</span>
+      ))}
+    </span>
+  );
+}
+
+export default function InspectionQueue({ tasks, onConfirm, onReject }) {
+  const [openRejectId, setOpenRejectId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  function handleReject(taskId) {
+    const feedback = rejectReason.trim() || 'Needs another pass before it can be signed off.';
+    onReject(taskId, feedback);
+    setOpenRejectId(null);
+    setRejectReason('');
+  }
+
+  return (
+    <div className="queue-section">
+      <div className="queue-section-head">
+        <h3>Inspection Queue</h3>
+        <span className="count-pill">{tasks.length}</span>
+      </div>
+      <div className="queue-list">
+        {tasks.length === 0 ? (
+          <div className="empty-queue">Nothing waiting on inspection right now.</div>
+        ) : (
+          tasks.map((task) => (
+            <div className="queue-item" key={task.id}>
+              <div className="qi-main">
+                <div className="qi-title">{task.title}</div>
+                <div className="qi-sub">
+                  {task.id?.slice(-8)} · Submitted by {task.assigned_to_name || 'Unknown'} ·{' '}
+                  Complexity <ComplexityDots level={task.complexity} />
+                </div>
+              </div>
+              <div className="queue-actions">
+                <button
+                  className="btn btn-sm btn-stamp-approve"
+                  onClick={() => onConfirm(task.id)}
+                >
+                  Confirm
+                </button>
+                <button
+                  className="btn btn-sm btn-stamp-reject"
+                  onClick={() =>
+                    setOpenRejectId(openRejectId === task.id ? null : task.id)
+                  }
+                >
+                  Send Back
+                </button>
+              </div>
+              {openRejectId === task.id && (
+                <div className="reject-panel">
+                  <textarea
+                    placeholder="What needs to be fixed before this can be signed off?"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                  />
+                  <div className="reject-actions">
+                    <button
+                      className="btn btn-sm btn-stamp-reject"
+                      onClick={() => handleReject(task.id)}
+                    >
+                      Confirm rejection
+                    </button>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => {
+                        setOpenRejectId(null);
+                        setRejectReason('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+### `frontend/src/components/NewTaskModal.jsx`
+
+```jsx
+/**
+ * New Work Order modal — Manager creates and assigns tasks.
+ */
+
+import React, { useState, useEffect } from 'react';
+import api from '../utils/api';
+
+export default function NewTaskModal({ isOpen, onClose, onCreated }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [assignee, setAssignee] = useState('');
+  const [complexity, setComplexity] = useState(2);
+  const [employees, setEmployees] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      api.get('/api/users/employees').then((res) => {
+        setEmployees(res.data);
+        if (res.data.length > 0) setAssignee(res.data[0].firebase_uid);
+      });
+    }
+  }, [isOpen]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setSubmitting(true);
+
+    try {
+      await api.post('/api/tasks', {
+        title: title.trim(),
+        description: description.trim() || 'No description provided.',
+        assigned_to: assignee,
+        complexity: parseInt(complexity, 10),
+      });
+      setTitle('');
+      setDescription('');
+      setComplexity(2);
+      onCreated?.();
+      onClose();
+    } catch (err) {
+      console.error('Failed to create task:', err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className={`modal-overlay ${isOpen ? 'open' : ''}`} onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>New work order</h3>
+        <form onSubmit={handleSubmit}>
+          <div className="field">
+            <label htmlFor="nt-title">Title</label>
+            <input
+              id="nt-title"
+              type="text"
+              placeholder="e.g. Fix Nginx upstream config"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="nt-desc">Description</label>
+            <input
+              id="nt-desc"
+              type="text"
+              placeholder="What needs to happen"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="nt-assignee">Assign to</label>
+            <select
+              id="nt-assignee"
+              value={assignee}
+              onChange={(e) => setAssignee(e.target.value)}
+            >
+              {employees.map((emp) => (
+                <option key={emp.firebase_uid} value={emp.firebase_uid}>
+                  {emp.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="nt-complexity">Complexity</label>
+            <select
+              id="nt-complexity"
+              value={complexity}
+              onChange={(e) => setComplexity(e.target.value)}
+            >
+              <option value={1}>Low</option>
+              <option value={2}>Medium</option>
+              <option value={3}>High</option>
+            </select>
+          </div>
+          <div className="modal-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ flex: 1 }}
+              disabled={submitting}
+            >
+              {submitting ? 'Creating...' : 'Open work order'}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+```
+
+### `frontend/src/components/RejectPanel.jsx`
+
+```jsx
+/**
+ * Reject Panel — inline feedback form for rejecting a task submission.
+ * Extracted as a reusable component.
+ */
+
+import React, { useState } from 'react';
+
+export default function RejectPanel({ taskId, onReject, onCancel }) {
+  const [reason, setReason] = useState('');
+
+  function handleSubmit() {
+    const feedback = reason.trim() || 'Needs another pass before it can be signed off.';
+    onReject(taskId, feedback);
+    setReason('');
+  }
+
+  return (
+    <div className="reject-panel">
+      <textarea
+        placeholder="What needs to be fixed before this can be signed off?"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <div className="reject-actions">
+        <button className="btn btn-sm btn-stamp-reject" onClick={handleSubmit}>
+          Confirm rejection
+        </button>
+        <button className="btn btn-sm btn-ghost" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+### `frontend/src/pages/ManagerDashboard.jsx`
+
+```jsx
+/**
+ * Manager Dashboard — full board + inspection queue + "New Work Order" button.
+ * Manager sees ALL tasks across all employees.
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import api from '../utils/api';
+import BoardColumn from '../components/BoardColumn';
+import InspectionQueue from '../components/InspectionQueue';
+import NewTaskModal from '../components/NewTaskModal';
+import { useToast } from '../components/Toast';
+
+const STAGES = ['todo', 'in_progress', 'submitted_for_review', 'done'];
+
+export default function ManagerDashboard() {
+  const [tasks, setTasks] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const showToast = useToast();
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      const res = await api.get('/api/tasks');
+      setTasks(res.data);
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+  const pendingInspection = tasks.filter((t) => t.stage === 'submitted_for_review');
+
+  async function handleConfirm(taskId) {
+    try {
+      await api.post(`/api/tasks/${taskId}/review`, {
+        action: 'confirm',
+      });
+      showToast('Task signed off and marked Done.');
+      fetchTasks();
+    } catch (err) {
+      showToast('Failed to confirm task.');
+    }
+  }
+
+  async function handleReject(taskId, feedback) {
+    try {
+      await api.post(`/api/tasks/${taskId}/review`, {
+        action: 'reject',
+        feedback,
+      });
+      showToast('Task sent back for revision.');
+      fetchTasks();
+    } catch (err) {
+      showToast('Failed to reject task.');
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="content">
+        <div className="loading-screen" style={{ minHeight: '50vh' }}>
+          <div className="spinner"></div>
+          <div className="loading-text">Loading work orders…</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="content">
+      <div className="page-head">
+        <div>
+          <h2>Job Board</h2>
+          <p>Open new work orders, assign the crew, and inspect what comes back.</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
+          + New Work Order
+        </button>
+      </div>
+
+      <InspectionQueue
+        tasks={pendingInspection}
+        onConfirm={handleConfirm}
+        onReject={handleReject}
+      />
+
+      <div className="board">
+        {STAGES.map((stage) => (
+          <BoardColumn
+            key={stage}
+            stage={stage}
+            tasks={tasks.filter((t) => t.stage === stage)}
+            userRole="manager"
+          />
+        ))}
+      </div>
+
+      <NewTaskModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={fetchTasks}
+      />
+    </div>
+  );
+}
+```
+
+### `frontend/src/pages/EmployeeDashboard.jsx`
+
+```jsx
+/**
+ * Employee Dashboard — filtered board (own tasks only) + submit actions.
+ * Employee can: start jobs, submit for inspection.
+ * Employee CANNOT: create tasks, confirm/reject, see other employees' tasks.
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import api from '../utils/api';
+import BoardColumn from '../components/BoardColumn';
+import { useToast } from '../components/Toast';
+
+const STAGES = ['todo', 'in_progress', 'submitted_for_review', 'done'];
+
+export default function EmployeeDashboard() {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const showToast = useToast();
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      const res = await api.get('/api/tasks');
+      setTasks(res.data);
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+  async function handleStart(taskId) {
+    try {
+      await api.post(`/api/tasks/${taskId}/start`);
+      showToast('Job started — moved to In Progress.');
+      fetchTasks();
+    } catch (err) {
+      showToast('Failed to start task.');
+    }
+  }
+
+  async function handleSubmit(taskId) {
+    try {
+      await api.post(`/api/tasks/${taskId}/submit`);
+      showToast('Submitted for inspection — awaiting manager review.');
+      fetchTasks();
+    } catch (err) {
+      showToast('Failed to submit task.');
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="content">
+        <div className="loading-screen" style={{ minHeight: '50vh' }}>
+          <div className="spinner"></div>
+          <div className="loading-text">Loading your work orders…</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="content">
+      <div className="page-head">
+        <div>
+          <h2>My Work Orders</h2>
+          <p>
+            Jobs assigned to you. Submit finished work for inspection — your Manager
+            signs off before it counts as done.
+          </p>
+        </div>
+      </div>
+
+      <div className="board">
+        {STAGES.map((stage) => (
+          <BoardColumn
+            key={stage}
+            stage={stage}
+            tasks={tasks.filter((t) => t.stage === stage)}
+            userRole="employee"
+            onStart={handleStart}
+            onSubmit={handleSubmit}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+### `frontend/src/App.jsx`
+
+```jsx
+/**
+ * Root application component.
+ * Handles role-based routing:
+ * - Not logged in → AuthScreen
+ * - Logged in as Manager → ManagerDashboard
+ * - Logged in as Employee → EmployeeDashboard
+ */
+
+import React from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider } from './components/Toast';
+import AuthScreen from './components/AuthScreen';
+import Topbar from './components/Topbar';
+import ManagerDashboard from './pages/ManagerDashboard';
+import EmployeeDashboard from './pages/EmployeeDashboard';
+
+function AppContent() {
+  const { currentUser, userProfile, loading } = useAuth();
+
+  // Show loading spinner while checking auth state
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="spinner"></div>
+        <div className="loading-text">Initializing…</div>
+      </div>
+    );
+  }
+
+  // Not logged in or not registered → show auth screen
+  if (!currentUser || !userProfile) {
+    return <AuthScreen />;
+  }
+
+  // Logged in — render role-appropriate dashboard
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <Topbar />
+      {userProfile.role === 'manager' ? <ManagerDashboard /> : <EmployeeDashboard />}
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </AuthProvider>
+  );
+}
+```
+
 ---
 
 ## 1.5 — Running the MVP Locally (Before Any Docker)
