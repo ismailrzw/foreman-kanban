@@ -79,3 +79,8 @@ jobs:
             exit 1
           fi
           echo "✅ Frontend is live"
+
+      - name: Create rollback tag
+        run: |
+          git tag -a rollback-${{ github.sha }} -m "Rollback point for ${{ github.sha }}"
+          git push origin rollback-${{ github.sha }}
