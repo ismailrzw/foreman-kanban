@@ -46,6 +46,14 @@ class TaskReviewAction(BaseModel):
     )
 
 
+class RevisionEntry(BaseModel):
+    """A single rejection/revision record."""
+    revision_number: int
+    rejected_at: datetime
+    feedback: str
+    rejected_by: str  # Firebase UID of the manager who rejected
+
+
 class TaskResponse(BaseModel):
     """Schema for task data returned by the API."""
     id: str = Field(..., description="MongoDB document _id as string")
@@ -57,6 +65,8 @@ class TaskResponse(BaseModel):
     stage: StageType
     is_rejected: bool = False
     rejection_feedback: Optional[str] = None
+    revision_history: list[RevisionEntry] = []
+    revision_count: int = 0
     created_by: str
     created_at: datetime
     updated_at: datetime

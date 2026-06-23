@@ -27,6 +27,7 @@ from app.models.task import (
     TaskUpdate,
     TaskResponse,
     TaskReviewAction,
+    RevisionEntry,
 )
 from app.utils.status_machine import validate_transition
 from app.core.database import get_database
@@ -50,10 +51,13 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
         stage=doc["stage"],
         is_rejected=doc.get("is_rejected", False),
         rejection_feedback=doc.get("rejection_feedback"),
+        revision_history=doc.get("revision_history", []),
+        revision_count=doc.get("revision_count", 0),
         created_by=doc["created_by"],
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],
     )
+
 
 
 # ─── LIST TASKS ──────────────────────────────────────────────
@@ -363,15 +367,57 @@ async def review_task(
         if not is_valid:
             raise HTTPException(status_code=400, detail=error)
 
+        new_revision_number = task.get("revision_count", 0) + 1
+        revision_entry = {
+            "revision_number": new_revision_number,
+            "rejected_at": now,
+            "feedback": review_data.feedback,
+            "rejected_by": current_user["firebase_uid"],
+        }
+
         await db.tasks.update_one(
             {"_id": ObjectId(task_id)},
-            {"$set": {
-                "stage": "in_progress",
-                "is_rejected": True,
-                "rejection_feedback": review_data.feedback,
-                "updated_at": now,
-            }},
+            {
+                "$set": {
+                    "stage": "in_progress",
+                    "is_rejected": True,
+                    "rejection_feedback": review_data.feedback,
+                    "updated_at": now,
+                },
+                "$push": {
+                    "revision_history": revision_entry
+                },
+                "$inc": {
+                    "revision_count": 1
+                }
+            },
         )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
+
+
+# ─── TASK HISTORY (Manager only) ──────────────────────────────
+
+@router.get("/tasks/{task_id}/history")
+async def get_task_history(
+    task_id: str,
+    current_user: dict = Depends(require_role("manager")),
+):
+    """
+    Get the revision history for a task (Manager only).
+    """
+    db = get_database()
+
+    if not ObjectId.is_valid(task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
+    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    return {
+        "task_id": task_id,
+        "revision_count": task.get("revision_count", 0),
+        "revisions": task.get("revision_history", []),
+    }
