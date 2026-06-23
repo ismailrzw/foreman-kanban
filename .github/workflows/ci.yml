@@ -107,3 +107,28 @@ jobs:
             VITE_FIREBASE_STORAGE_BUCKET=placeholder.appspot.com
             VITE_FIREBASE_MESSAGING_SENDER_ID=000000
             VITE_FIREBASE_APP_ID=placeholder
+
+  # ─── Security Scan ───
+  security-scan:
+    name: Security Scan
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run backend security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'foreman-backend:ci-${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run frontend security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'foreman-frontend:ci-${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
