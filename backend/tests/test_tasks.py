@@ -187,3 +187,64 @@ def test_audit_trail(client, setup_mocks):
     res = client.get("/api/audit/recent", headers=headers_emp)
     assert res.status_code == status.HTTP_403_FORBIDDEN
 
+
+def test_workload_dashboard(client, setup_mocks):
+    db = setup_mocks
+    headers_mgr = {"Authorization": "Bearer manager-token"}
+    headers_emp = {"Authorization": "Bearer employee-token"}
+    from bson import ObjectId
+
+    # 1. Register a second employee in mock DB list directly
+    db.data["users"].append({
+        "_id": ObjectId(),
+        "firebase_uid": "uid-emp2",
+        "email": "emp2@test.com",
+        "name": "Employee Two",
+        "role": "employee"
+    })
+
+    # 2. Create tasks assigned to Test Employee (uid-emp)
+    client.post("/api/tasks", json={
+        "title": "Task 1",
+        "assigned_to": "uid-emp",
+        "complexity": 2
+    }, headers=headers_mgr)
+
+    res = client.post("/api/tasks", json={
+        "title": "Task 2",
+        "assigned_to": "uid-emp",
+        "complexity": 3
+    }, headers=headers_mgr)
+    task2_id = res.json()["id"]
+
+    # Start Task 2 so it enters in_progress
+    client.post(f"/api/tasks/{task2_id}/start", headers=headers_emp)
+
+    # 3. Get workload dashboard (Manager)
+    res = client.get("/api/analytics/workload", headers=headers_mgr)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    employees = data["employees"]
+    assert len(employees) == 2
+
+    # Find stats for Employee One (uid-emp) and Employee Two (uid-emp2)
+    emp1 = next(e for e in employees if e["firebase_uid"] == "uid-emp")
+    emp2 = next(e for e in employees if e["firebase_uid"] == "uid-emp2")
+
+    assert emp1["total_tasks"] == 2
+    assert emp1["weighted_load"] == 5
+    assert emp1["by_stage"]["todo"]["count"] == 1
+    assert emp1["by_stage"]["todo"]["weight"] == 2
+    assert emp1["by_stage"]["in_progress"]["count"] == 1
+    assert emp1["by_stage"]["in_progress"]["weight"] == 3
+
+    assert emp2["total_tasks"] == 0
+    assert emp2["weighted_load"] == 0
+    assert emp2["by_stage"]["todo"]["count"] == 0
+    assert emp2["by_stage"]["todo"]["weight"] == 0
+
+    # 4. Try getting workload dashboard (Employee - should fail 403)
+    res = client.get("/api/analytics/workload", headers=headers_emp)
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+
+
