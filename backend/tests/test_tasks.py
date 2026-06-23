@@ -248,3 +248,72 @@ def test_workload_dashboard(client, setup_mocks):
     assert res.status_code == status.HTTP_403_FORBIDDEN
 
 
+def test_manager_completion_metrics(client, setup_mocks):
+    db = setup_mocks
+    headers_mgr = {"Authorization": "Bearer manager-token"}
+    headers_emp = {"Authorization": "Bearer employee-token"}
+
+    # 1. Create task (Manager)
+    res = client.post("/api/tasks", json={
+        "title": "Task Metrics",
+        "assigned_to": "uid-emp",
+        "complexity": 2
+    }, headers=headers_mgr)
+    task_id = res.json()["id"]
+
+    # 2. Complete task cycle: start -> submit -> confirm
+    client.post(f"/api/tasks/{task_id}/start", headers=headers_emp)
+    client.post(f"/api/tasks/{task_id}/submit", headers=headers_emp)
+
+    # We want to test time metrics, so let's adjust created_at in the mock db to 2 hours ago
+    from datetime import datetime, timedelta, timezone
+    for t in db.data["tasks"]:
+        if str(t["_id"]) == task_id:
+            t["created_at"] = datetime.now(timezone.utc) - timedelta(hours=2)
+
+    # Confirm it
+    client.post(f"/api/tasks/{task_id}/review", json={"action": "confirm"}, headers=headers_mgr)
+
+    # 3. Create a second task that gets rejected once, then remains in_progress
+    res = client.post("/api/tasks", json={
+        "title": "Task Metrics 2",
+        "assigned_to": "uid-emp",
+        "complexity": 3
+    }, headers=headers_mgr)
+    task2_id = res.json()["id"]
+    client.post(f"/api/tasks/{task2_id}/start", headers=headers_emp)
+    client.post(f"/api/tasks/{task2_id}/submit", headers=headers_emp)
+    client.post(f"/api/tasks/{task2_id}/review", json={"action": "reject", "feedback": "Fix this"}, headers=headers_mgr)
+
+    # 4. Fetch metrics (Manager)
+    res = client.get("/api/analytics/metrics", headers=headers_mgr)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+
+    # Check overall stats
+    overall = data["overall"]
+    assert overall["total_tasks"] == 2
+    assert overall["completed"] == 1
+    assert overall["completion_rate"] == 0.5
+    # avg_completion_time_hours should be around 2.0 (allow slight offset)
+    assert 1.9 <= overall["avg_completion_time_hours"] <= 2.1
+    # One task rejected out of two total -> 0.5 rejection rate
+    assert overall["rejection_rate"] == 0.5
+
+    # Check per-employee stats
+    assert len(data["per_employee"]) == 1
+    emp_stats = data["per_employee"][0]
+    assert emp_stats["name"] == "Test Employee"
+    assert emp_stats["total"] == 2
+    assert emp_stats["completed"] == 1
+    assert emp_stats["completion_rate"] == 0.5
+    assert 1.9 <= emp_stats["avg_completion_time_hours"] <= 2.1
+    assert emp_stats["rejection_rate"] == 0.5
+    assert emp_stats["complexity_distribution"] == {"1": 0, "2": 1, "3": 1}
+
+    # 5. Fetch metrics (Employee - should fail 403)
+    res = client.get("/api/analytics/metrics", headers=headers_emp)
+    assert res.status_code == status.HTTP_403_FORBIDDEN
+
+
+
