@@ -64,4 +64,4 @@ app.include_router(analytics_router)
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint for Docker/K8s probes."""
-    return {"status": "healthy", "service": "foreman-backend"}
+    return {"status": "healthy", "service": "foreman-backend"}  # Test CI
