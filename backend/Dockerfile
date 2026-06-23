@@ -1,6 +1,9 @@
 # ─── Stage 1: Builder ───
 FROM python:3.12-slim AS builder
 
+# Add this at the top of the file, after the FROM line
+ARG CACHE_BUST=1
+
 WORKDIR /build
 
 # Install dependencies in a virtual environment
