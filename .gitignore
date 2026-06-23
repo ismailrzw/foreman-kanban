@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Environment files (NEVER commit real secrets)
+.env
+.env.local
+.env.production
+backend/.env
+frontend/.env
+
+# Firebase service account (CRITICAL — never commit)
+**/serviceAccountKey.json
+**/firebase-service-account.json
+**/firebase-adminsdk*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Kubernetes secrets with real values
+k8s/secrets-real.yml

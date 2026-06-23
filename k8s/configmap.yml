@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: foreman-config
+  namespace: foreman
+data:
+  FRONTEND_URL: "http://foreman.local"
+  API_URL: "http://backend-svc:8000"
