@@ -27,7 +27,6 @@ from app.models.task import (
     TaskUpdate,
     TaskResponse,
     TaskReviewAction,
-    RevisionEntry,
 )
 from app.utils.status_machine import validate_transition
 from app.core.database import get_database

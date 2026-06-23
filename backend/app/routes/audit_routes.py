@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from bson import ObjectId
 from app.middleware.role_guard import require_role
 from app.core.database import get_database
