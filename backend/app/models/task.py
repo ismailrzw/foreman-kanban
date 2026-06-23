@@ -22,6 +22,7 @@ class TaskCreate(BaseModel):
     description: str = Field(default="", max_length=1000, description="Task description")
     assigned_to: str = Field(..., description="Firebase UID of the assigned employee")
     complexity: ComplexityType = Field(default=2, description="1=Low, 2=Medium, 3=High")
+    deadline: Optional[datetime] = Field(None, description="Optional deadline — ISO 8601 format")
 
 
 class TaskUpdate(BaseModel):
@@ -31,6 +32,8 @@ class TaskUpdate(BaseModel):
     assigned_to: Optional[str] = None
     complexity: Optional[ComplexityType] = None
     stage: Optional[StageType] = None
+    deadline: Optional[datetime] = None
+
 
 
 class TaskSubmitForReview(BaseModel):
@@ -46,6 +49,14 @@ class TaskReviewAction(BaseModel):
     )
 
 
+class RevisionEntry(BaseModel):
+    """A single rejection/revision record."""
+    revision_number: int
+    rejected_at: datetime
+    feedback: str
+    rejected_by: str  # Firebase UID of the manager who rejected
+
+
 class TaskResponse(BaseModel):
     """Schema for task data returned by the API."""
     id: str = Field(..., description="MongoDB document _id as string")
@@ -57,6 +68,11 @@ class TaskResponse(BaseModel):
     stage: StageType
     is_rejected: bool = False
     rejection_feedback: Optional[str] = None
+    revision_history: list[RevisionEntry] = []
+    revision_count: int = 0
+    deadline: Optional[datetime] = None
+    is_overdue: bool = False
+    completed_at: Optional[datetime] = None
     created_by: str
     created_at: datetime
     updated_at: datetime

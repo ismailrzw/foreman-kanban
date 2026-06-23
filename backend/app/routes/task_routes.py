@@ -30,8 +30,10 @@ from app.models.task import (
 )
 from app.utils.status_machine import validate_transition
 from app.core.database import get_database
+from app.utils.audit_logger import log_audit
 
 router = APIRouter(prefix="/api", tags=["tasks"])
+
 
 
 def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
@@ -39,6 +41,12 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
     assigned_to_name = None
     if users_cache and doc.get("assigned_to") in users_cache:
         assigned_to_name = users_cache[doc["assigned_to"]]
+
+    deadline = doc.get("deadline")
+    is_overdue = False
+    if deadline and doc.get("stage") != "done":
+        now = datetime.now(timezone.utc) if deadline.tzinfo else datetime.now()
+        is_overdue = deadline < now
 
     return TaskResponse(
         id=str(doc["_id"]),
@@ -50,10 +58,17 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
         stage=doc["stage"],
         is_rejected=doc.get("is_rejected", False),
         rejection_feedback=doc.get("rejection_feedback"),
+        revision_history=doc.get("revision_history", []),
+        revision_count=doc.get("revision_count", 0),
+        deadline=deadline,
+        is_overdue=is_overdue,
+        completed_at=doc.get("completed_at"),
         created_by=doc["created_by"],
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],
     )
+
+
 
 
 # ─── LIST TASKS ──────────────────────────────────────────────
@@ -121,17 +136,24 @@ async def create_task(
         "stage": "todo",
         "is_rejected": False,
         "rejection_feedback": None,
+        "revision_history": [],
+        "revision_count": 0,
+        "deadline": task_data.deadline,
+        "completed_at": None,
         "created_by": current_user["firebase_uid"],
         "created_at": now,
         "updated_at": now,
     }
 
+
     result = await db.tasks.insert_one(doc)
     doc["_id"] = result.inserted_id
+    await log_audit(task_id=str(result.inserted_id), action="created", user=current_user, new_stage="todo")
 
     # Get assignee name for response
     users_cache = {employee["firebase_uid"]: employee["name"]}
     return task_doc_to_response(doc, users_cache)
+
 
 
 # ─── UPDATE TASK (Manager only) ─────────────────────────────
@@ -155,10 +177,9 @@ async def update_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
 
-    # Build update dict (only non-None fields)
-    update_fields = {
-        k: v for k, v in task_data.model_dump().items() if v is not None
-    }
+    # Build update dict (only explicitly set fields)
+    update_fields = task_data.model_dump(exclude_unset=True)
+
 
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update.")
@@ -176,9 +197,18 @@ async def update_task(
         {"_id": ObjectId(task_id)},
         {"$set": update_fields},
     )
+    await log_audit(
+        task_id=task_id,
+        action="updated",
+        user=current_user,
+        previous_stage=task["stage"],
+        new_stage=update_fields.get("stage"),
+        details="Metadata updated"
+    )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
+
 
 
 # ─── DELETE TASK (Manager only) ──────────────────────────────
@@ -194,9 +224,18 @@ async def delete_task(
     if not ObjectId.is_valid(task_id):
         raise HTTPException(status_code=400, detail="Invalid task ID format.")
 
-    result = await db.tasks.delete_one({"_id": ObjectId(task_id)})
-    if result.deleted_count == 0:
+    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
+
+    await db.tasks.delete_one({"_id": ObjectId(task_id)})
+    await log_audit(
+        task_id=task_id,
+        action="deleted",
+        user=current_user,
+        previous_stage=task["stage"]
+    )
+
 
 
 # ─── SUBMIT FOR REVIEW (Employee only) ──────────────────────
@@ -248,9 +287,17 @@ async def submit_for_review(
             "updated_at": now,
         }},
     )
+    await log_audit(
+        task_id=task_id,
+        action="submitted",
+        user=current_user,
+        previous_stage=task["stage"],
+        new_stage="submitted_for_review"
+    )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
+
 
 
 # ─── START TASK (Employee only) ──────────────────────────────
@@ -292,9 +339,17 @@ async def start_task(
         {"_id": ObjectId(task_id)},
         {"$set": {"stage": "in_progress", "updated_at": now}},
     )
+    await log_audit(
+        task_id=task_id,
+        action="started",
+        user=current_user,
+        previous_stage=task["stage"],
+        new_stage="in_progress"
+    )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
+
 
 
 # ─── REVIEW TASK (Manager only) ─────────────────────────────
@@ -345,9 +400,18 @@ async def review_task(
                 "stage": "done",
                 "is_rejected": False,
                 "rejection_feedback": None,
+                "completed_at": now,
                 "updated_at": now,
             }},
         )
+        await log_audit(
+            task_id=task_id,
+            action="confirmed",
+            user=current_user,
+            previous_stage=task["stage"],
+            new_stage="done"
+        )
+
 
     elif review_data.action == "reject":
         if not review_data.feedback:
@@ -363,15 +427,95 @@ async def review_task(
         if not is_valid:
             raise HTTPException(status_code=400, detail=error)
 
+        new_revision_number = task.get("revision_count", 0) + 1
+        revision_entry = {
+            "revision_number": new_revision_number,
+            "rejected_at": now,
+            "feedback": review_data.feedback,
+            "rejected_by": current_user["firebase_uid"],
+        }
+
         await db.tasks.update_one(
             {"_id": ObjectId(task_id)},
-            {"$set": {
-                "stage": "in_progress",
-                "is_rejected": True,
-                "rejection_feedback": review_data.feedback,
-                "updated_at": now,
-            }},
+            {
+                "$set": {
+                    "stage": "in_progress",
+                    "is_rejected": True,
+                    "rejection_feedback": review_data.feedback,
+                    "updated_at": now,
+                },
+                "$push": {
+                    "revision_history": revision_entry
+                },
+                "$inc": {
+                    "revision_count": 1
+                }
+            },
+        )
+        await log_audit(
+            task_id=task_id,
+            action="rejected",
+            user=current_user,
+            previous_stage=task["stage"],
+            new_stage="in_progress",
+            details=review_data.feedback
         )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
+
+
+# ─── OVERDUE TASKS (Manager only) ─────────────────────────────
+
+@router.get("/tasks/overdue", response_model=list[TaskResponse])
+async def get_overdue_tasks(
+    current_user: dict = Depends(require_role("manager")),
+):
+    """
+    Get all overdue tasks (Manager only).
+    """
+    db = get_database()
+    now = datetime.now(timezone.utc)
+
+    # Query non-done tasks with deadlines in the past
+    query = {
+        "stage": {"$ne": "done"},
+        "deadline": {"$ne": None, "$lt": now}
+    }
+
+    # Build a user name cache for assigned_to_name
+    users_cache = {}
+    async for user in db.users.find({"role": "employee"}):
+        users_cache[user["firebase_uid"]] = user["name"]
+
+    cursor = db.tasks.find(query).sort("deadline", 1)
+    tasks = []
+    async for doc in cursor:
+        tasks.append(task_doc_to_response(doc, users_cache))
+    return tasks
+
+
+# ─── TASK HISTORY (Manager only) ──────────────────────────────
+
+@router.get("/tasks/{task_id}/history")
+async def get_task_history(
+    task_id: str,
+    current_user: dict = Depends(require_role("manager")),
+):
+    """
+    Get the revision history for a task (Manager only).
+    """
+    db = get_database()
+
+    if not ObjectId.is_valid(task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
+    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    return {
+        "task_id": task_id,
+        "revision_count": task.get("revision_count", 0),
+        "revisions": task.get("revision_history", []),
+    }
