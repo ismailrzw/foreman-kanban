@@ -119,6 +119,7 @@ jobs:
             VITE_FIREBASE_MESSAGING_SENDER_ID=000000
             VITE_FIREBASE_APP_ID=placeholder
 
+  # ─── THIS IS THE FIXED SECURITY SCAN ───
   security-scan:
     name: Security Scan
     needs: [backend, frontend]
@@ -142,6 +143,7 @@ jobs:
         run: |
           docker pull ${{ env.DOCKERHUB_USERNAME }}/foreman-frontend:ci-${{ github.sha }}
 
+      # ─── NO TRIVY ACTION - USING DOCKER RUN INSTEAD ───
       - name: Scan backend image with Trivy
         run: |
           docker run --rm \
