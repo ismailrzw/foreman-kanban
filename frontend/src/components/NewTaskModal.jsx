@@ -2,7 +2,7 @@
  * New Work Order modal — Manager creates and assigns tasks.
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../utils/api';
 
 export default function NewTaskModal({ isOpen, onClose, onCreated }) {

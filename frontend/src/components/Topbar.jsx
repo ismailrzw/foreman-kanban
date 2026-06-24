@@ -2,11 +2,14 @@
  * Top navigation bar — brand mark, page title, user badge, logout.
  */
 
-import React from 'react';
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { getStoredTheme, setStoredTheme } from '../utils/theme';
+import NotificationBell from './NotificationBell';
 
 export default function Topbar() {
   const { userProfile, logout } = useAuth();
+  const [theme, setTheme] = useState(getStoredTheme());
 
   if (!userProfile) return null;
 
@@ -19,6 +22,12 @@ export default function Topbar() {
 
   const isManager = userProfile.role === 'manager';
   const pageTitle = isManager ? 'Job Board — Manager View' : 'My Work Orders';
+
+  const handleToggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    setStoredTheme(nextTheme);
+  };
 
   return (
     <div className="topbar">
@@ -37,6 +46,14 @@ export default function Topbar() {
           <small>{isManager ? 'Manager' : 'Employee'}</small>
         </div>
       </div>
+
+      <div style={{ marginRight: '16px', display: 'flex', alignItems: 'center' }}>
+        <NotificationBell />
+      </div>
+
+      <button className="icon-btn" title="Toggle Theme" onClick={handleToggleTheme} style={{ marginRight: '16px', fontSize: '16px' }}>
+        {theme === 'dark' ? '☀' : '🌙'}
+      </button>
 
       <button className="icon-btn" title="Sign out" onClick={logout}>
         ⏏

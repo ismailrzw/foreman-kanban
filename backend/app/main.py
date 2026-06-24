@@ -49,13 +49,19 @@ app.add_middleware(
 from app.routes.auth_routes import router as auth_router
 from app.routes.task_routes import router as task_router
 from app.routes.user_routes import router as user_router
+from app.routes.audit_routes import router as audit_router
+from app.routes.analytics_routes import router as analytics_router
 
 app.include_router(auth_router)
 app.include_router(task_router)
 app.include_router(user_router)
+app.include_router(audit_router)
+app.include_router(analytics_router)
+
+
 
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint for Docker/K8s probes."""
-    return {"status": "healthy", "service": "foreman-backend"}
+    return {"status": "healthy", "service": "foreman-backend"} # Test CI
