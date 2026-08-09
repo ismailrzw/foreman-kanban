@@ -1,9 +1,9 @@
-import pytest
-from fastapi import status
 from datetime import datetime, timedelta, timezone
 
+from fastapi import status
+
+
 def test_rejection_history_flow(client, setup_mocks):
-    db = setup_mocks
     
     # 1. Create a task (as Manager)
     create_payload = {
@@ -14,6 +14,7 @@ def test_rejection_history_flow(client, setup_mocks):
     }
     headers_mgr = {"Authorization": "Bearer manager-token"}
     response = client.post("/api/tasks", json=create_payload, headers=headers_mgr)
+    print("RESPONSE", response.json())
     assert response.status_code == status.HTTP_201_CREATED
     task = response.json()
     task_id = task["id"]
@@ -69,7 +70,6 @@ def test_rejection_history_flow(client, setup_mocks):
 
 
 def test_deadlines_and_overdue(client, setup_mocks):
-    db = setup_mocks
     headers_mgr = {"Authorization": "Bearer manager-token"}
     headers_emp = {"Authorization": "Bearer employee-token"}
 
@@ -125,7 +125,6 @@ def test_deadlines_and_overdue(client, setup_mocks):
 
 
 def test_audit_trail(client, setup_mocks):
-    db = setup_mocks
     headers_mgr = {"Authorization": "Bearer manager-token"}
     headers_emp = {"Authorization": "Bearer employee-token"}
 
@@ -206,12 +205,14 @@ def test_workload_dashboard(client, setup_mocks):
     # 2. Create tasks assigned to Test Employee (uid-emp)
     client.post("/api/tasks", json={
         "title": "Task 1",
+        "description": "Test task 1",
         "assigned_to": "uid-emp",
         "complexity": 2
     }, headers=headers_mgr)
 
     res = client.post("/api/tasks", json={
         "title": "Task 2",
+        "description": "Test task 2",
         "assigned_to": "uid-emp",
         "complexity": 3
     }, headers=headers_mgr)
@@ -256,6 +257,7 @@ def test_manager_completion_metrics(client, setup_mocks):
     # 1. Create task (Manager)
     res = client.post("/api/tasks", json={
         "title": "Task Metrics",
+        "description": "Task for metrics",
         "assigned_to": "uid-emp",
         "complexity": 2
     }, headers=headers_mgr)
@@ -277,6 +279,7 @@ def test_manager_completion_metrics(client, setup_mocks):
     # 3. Create a second task that gets rejected once, then remains in_progress
     res = client.post("/api/tasks", json={
         "title": "Task Metrics 2",
+        "description": "Task for metrics 2",
         "assigned_to": "uid-emp",
         "complexity": 3
     }, headers=headers_mgr)

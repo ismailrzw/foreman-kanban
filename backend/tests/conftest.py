@@ -1,7 +1,7 @@
-import os
 import json
-import sys
+import os
 from unittest.mock import MagicMock
+
 import firebase_admin
 import firebase_admin.credentials
 
@@ -16,16 +16,14 @@ os.environ["FIREBASE_SERVICE_ACCOUNT_JSON"] = json.dumps({
 })
 
 import pytest
-from fastapi.testclient import TestClient
-from fastapi import HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from bson import ObjectId
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.testclient import TestClient
+
 import app.core.database as app_db
-from app.main import app
 from app.firebase_auth import verify_firebase_token
-
-
-
+from app.main import app
 
 # ─── Mock Database Client ─────────────────────────────────────
 
@@ -127,8 +125,7 @@ class MockCollection:
                         break
                 elif isinstance(v, dict):
                     # Handle MongoDB operators
-                    if "$ne" in v:
-                        if doc.get(k) == v["$ne"]:
+                    if "$ne" in v and doc.get(k) == v["$ne"]:
                             match = False
                             break
                     if "$lt" in v:
