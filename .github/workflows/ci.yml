@@ -44,6 +44,7 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_PATH: ./tests/mock_sa.json
 
       - name: Login to DockerHub
+        if: ${{ github.event_name != 'pull_request' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -53,6 +54,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push backend Docker image
+        if: ${{ github.event_name != 'pull_request' }}
         uses: docker/build-push-action@v5
         with:
           context: ./backend
@@ -94,6 +96,7 @@ jobs:
           VITE_FIREBASE_APP_ID: 'ci-app-id'
 
       - name: Login to DockerHub
+        if: ${{ github.event_name != 'pull_request' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -103,6 +106,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push frontend Docker image
+        if: ${{ github.event_name != 'pull_request' }}
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
@@ -123,6 +127,7 @@ jobs:
   security-scan:
     name: Security Scan
     needs: [backend, frontend]
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
 
     steps:
