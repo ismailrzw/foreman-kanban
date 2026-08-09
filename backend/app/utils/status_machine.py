@@ -24,7 +24,10 @@ from typing import Literal
 ALLOWED_TRANSITIONS = {
     "todo": {"in_progress"},
     "in_progress": {"submitted_for_review"},
-    "submitted_for_review": {"done", "in_progress"},  # done = confirm, in_progress = reject
+    "submitted_for_review": {
+        "done",
+        "in_progress",
+    },  # done = confirm, in_progress = reject
     "done": set(),  # Terminal state — no transitions out
 }
 
@@ -33,8 +36,8 @@ ALLOWED_TRANSITIONS = {
 TRANSITION_ROLES = {
     ("todo", "in_progress"): "employee",
     ("in_progress", "submitted_for_review"): "employee",
-    ("submitted_for_review", "done"): "manager",          # Only manager can confirm
-    ("submitted_for_review", "in_progress"): "manager",   # Only manager can reject
+    ("submitted_for_review", "done"): "manager",  # Only manager can confirm
+    ("submitted_for_review", "in_progress"): "manager",  # Only manager can reject
 }
 
 

@@ -4,6 +4,7 @@ Configuration module — loads environment variables with sensible defaults.
 """
 
 import os
+
 from dotenv import load_dotenv
 
 # Load .env file
@@ -20,8 +21,7 @@ if not MONGO_URI:
 # ─── Firebase Service Account ──────────────────────────────
 
 FIREBASE_SERVICE_ACCOUNT_PATH = os.getenv(
-    "FIREBASE_SERVICE_ACCOUNT_PATH", 
-    "./serviceAccountKey.json"
+    "FIREBASE_SERVICE_ACCOUNT_PATH", "./serviceAccountKey.json"
 )
 
 # ─── CORS ────────────────────────────────────────────────────
@@ -34,13 +34,18 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 # ─── Validation ─────────────────────────────────────────────
 
+
 def validate_config():
     """Check if all required config is present."""
     issues = []
-    
-    if not os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON") and not os.path.exists(FIREBASE_SERVICE_ACCOUNT_PATH):
-        issues.append(f"Firebase service account file not found at: {FIREBASE_SERVICE_ACCOUNT_PATH}")
-    
+
+    if not os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON") and not os.path.exists(
+        FIREBASE_SERVICE_ACCOUNT_PATH
+    ):
+        issues.append(
+            f"Firebase service account file not found at: {FIREBASE_SERVICE_ACCOUNT_PATH}"
+        )
+
     if issues:
         print("⚠️  Configuration Issues Found:")
         for issue in issues:
@@ -48,6 +53,7 @@ def validate_config():
         print("   The app may not work correctly.")
         return False
     return True
+
 
 # Run validation on import
 validate_config()

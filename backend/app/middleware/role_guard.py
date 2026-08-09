@@ -20,8 +20,9 @@ Usage in routes:
 """
 
 from fastapi import Depends, HTTPException, status
-from app.firebase_auth import verify_firebase_token
+
 from app.core.database import get_database
+from app.firebase_auth import verify_firebase_token
 
 
 def require_role(required_role: str = None):
@@ -57,7 +58,7 @@ def require_role(required_role: str = None):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access denied. This endpoint requires the '{required_role}' role. "
-                       f"Your role is '{user.get('role')}'.",
+                f"Your role is '{user.get('role')}'.",
             )
 
         # Convert ObjectId to string for downstream use

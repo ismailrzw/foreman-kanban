@@ -18,22 +18,18 @@ The core PR-review-merge flow:
   Manager calls POST /api/tasks/{id}/review with action=reject → stage becomes 'in_progress'
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from bson import ObjectId
 from datetime import datetime, timezone
-from app.middleware.role_guard import require_role
-from app.models.task import (
-    TaskCreate,
-    TaskUpdate,
-    TaskResponse,
-    TaskReviewAction,
-)
-from app.utils.status_machine import validate_transition
+
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException, status
+
 from app.core.database import get_database
+from app.middleware.role_guard import require_role
+from app.models.task import TaskCreate, TaskResponse, TaskReviewAction, TaskUpdate
 from app.utils.audit_logger import log_audit
+from app.utils.status_machine import validate_transition
 
 router = APIRouter(prefix="/api", tags=["tasks"])
-
 
 
 def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
@@ -69,9 +65,8 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
     )
 
 
-
-
 # ─── LIST TASKS ──────────────────────────────────────────────
+
 
 @router.get("/tasks", response_model=list[TaskResponse])
 async def list_tasks(
@@ -105,6 +100,7 @@ async def list_tasks(
 
 # ─── CREATE TASK (Manager only) ─────────────────────────────
 
+
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     task_data: TaskCreate,
@@ -117,10 +113,12 @@ async def create_task(
     db = get_database()
 
     # Verify the assigned employee exists
-    employee = await db.users.find_one({
-        "firebase_uid": task_data.assigned_to,
-        "role": "employee",
-    })
+    employee = await db.users.find_one(
+        {
+            "firebase_uid": task_data.assigned_to,
+            "role": "employee",
+        }
+    )
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -145,18 +143,22 @@ async def create_task(
         "updated_at": now,
     }
 
-
     result = await db.tasks.insert_one(doc)
     doc["_id"] = result.inserted_id
-    await log_audit(task_id=str(result.inserted_id), action="created", user=current_user, new_stage="todo")
+    await log_audit(
+        task_id=str(result.inserted_id),
+        action="created",
+        user=current_user,
+        new_stage="todo",
+    )
 
     # Get assignee name for response
     users_cache = {employee["firebase_uid"]: employee["name"]}
     return task_doc_to_response(doc, users_cache)
 
 
-
 # ─── UPDATE TASK (Manager only) ─────────────────────────────
+
 
 @router.put("/tasks/{task_id}", response_model=TaskResponse)
 async def update_task(
@@ -180,7 +182,6 @@ async def update_task(
     # Build update dict (only explicitly set fields)
     update_fields = task_data.model_dump(exclude_unset=True)
 
-
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update.")
 
@@ -203,15 +204,15 @@ async def update_task(
         user=current_user,
         previous_stage=task["stage"],
         new_stage=update_fields.get("stage"),
-        details="Metadata updated"
+        details="Metadata updated",
     )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
 
 
-
 # ─── DELETE TASK (Manager only) ──────────────────────────────
+
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
@@ -233,12 +234,12 @@ async def delete_task(
         task_id=task_id,
         action="deleted",
         user=current_user,
-        previous_stage=task["stage"]
+        previous_stage=task["stage"],
     )
 
 
-
 # ─── SUBMIT FOR REVIEW (Employee only) ──────────────────────
+
 
 @router.post("/tasks/{task_id}/submit", response_model=TaskResponse)
 async def submit_for_review(
@@ -280,27 +281,29 @@ async def submit_for_review(
     now = datetime.now(timezone.utc)
     await db.tasks.update_one(
         {"_id": ObjectId(task_id)},
-        {"$set": {
-            "stage": "submitted_for_review",
-            "is_rejected": False,
-            "rejection_feedback": None,
-            "updated_at": now,
-        }},
+        {
+            "$set": {
+                "stage": "submitted_for_review",
+                "is_rejected": False,
+                "rejection_feedback": None,
+                "updated_at": now,
+            }
+        },
     )
     await log_audit(
         task_id=task_id,
         action="submitted",
         user=current_user,
         previous_stage=task["stage"],
-        new_stage="submitted_for_review"
+        new_stage="submitted_for_review",
     )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
 
 
-
 # ─── START TASK (Employee only) ──────────────────────────────
+
 
 @router.post("/tasks/{task_id}/start", response_model=TaskResponse)
 async def start_task(
@@ -344,15 +347,15 @@ async def start_task(
         action="started",
         user=current_user,
         previous_stage=task["stage"],
-        new_stage="in_progress"
+        new_stage="in_progress",
     )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
 
 
-
 # ─── REVIEW TASK (Manager only) ─────────────────────────────
+
 
 @router.post("/tasks/{task_id}/review", response_model=TaskResponse)
 async def review_task(
@@ -381,7 +384,7 @@ async def review_task(
         raise HTTPException(
             status_code=400,
             detail=f"Cannot review a task in '{task['stage']}' stage. "
-                   f"Task must be in 'submitted_for_review' stage.",
+            f"Task must be in 'submitted_for_review' stage.",
         )
 
     now = datetime.now(timezone.utc)
@@ -396,22 +399,23 @@ async def review_task(
 
         await db.tasks.update_one(
             {"_id": ObjectId(task_id)},
-            {"$set": {
-                "stage": "done",
-                "is_rejected": False,
-                "rejection_feedback": None,
-                "completed_at": now,
-                "updated_at": now,
-            }},
+            {
+                "$set": {
+                    "stage": "done",
+                    "is_rejected": False,
+                    "rejection_feedback": None,
+                    "completed_at": now,
+                    "updated_at": now,
+                }
+            },
         )
         await log_audit(
             task_id=task_id,
             action="confirmed",
             user=current_user,
             previous_stage=task["stage"],
-            new_stage="done"
+            new_stage="done",
         )
-
 
     elif review_data.action == "reject":
         if not review_data.feedback:
@@ -444,12 +448,8 @@ async def review_task(
                     "rejection_feedback": review_data.feedback,
                     "updated_at": now,
                 },
-                "$push": {
-                    "revision_history": revision_entry
-                },
-                "$inc": {
-                    "revision_count": 1
-                }
+                "$push": {"revision_history": revision_entry},
+                "$inc": {"revision_count": 1},
             },
         )
         await log_audit(
@@ -458,7 +458,7 @@ async def review_task(
             user=current_user,
             previous_stage=task["stage"],
             new_stage="in_progress",
-            details=review_data.feedback
+            details=review_data.feedback,
         )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
@@ -466,6 +466,7 @@ async def review_task(
 
 
 # ─── OVERDUE TASKS (Manager only) ─────────────────────────────
+
 
 @router.get("/tasks/overdue", response_model=list[TaskResponse])
 async def get_overdue_tasks(
@@ -478,10 +479,7 @@ async def get_overdue_tasks(
     now = datetime.now(timezone.utc)
 
     # Query non-done tasks with deadlines in the past
-    query = {
-        "stage": {"$ne": "done"},
-        "deadline": {"$ne": None, "$lt": now}
-    }
+    query = {"stage": {"$ne": "done"}, "deadline": {"$ne": None, "$lt": now}}
 
     # Build a user name cache for assigned_to_name
     users_cache = {}
@@ -496,6 +494,7 @@ async def get_overdue_tasks(
 
 
 # ─── TASK HISTORY (Manager only) ──────────────────────────────
+
 
 @router.get("/tasks/{task_id}/history")
 async def get_task_history(

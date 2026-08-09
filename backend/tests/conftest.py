@@ -1,7 +1,8 @@
-import os
 import json
+import os
 import sys
 from unittest.mock import MagicMock
+
 import firebase_admin
 import firebase_admin.credentials
 
@@ -10,24 +11,22 @@ firebase_admin.credentials.Certificate = MagicMock()
 firebase_admin.initialize_app = MagicMock()
 
 # Set mock Firebase credentials
-os.environ["FIREBASE_SERVICE_ACCOUNT_JSON"] = json.dumps({
-    "type": "service_account",
-    "project_id": "mock-project"
-})
+os.environ["FIREBASE_SERVICE_ACCOUNT_JSON"] = json.dumps(
+    {"type": "service_account", "project_id": "mock-project"}
+)
 
 import pytest
-from fastapi.testclient import TestClient
-from fastapi import HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from bson import ObjectId
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.testclient import TestClient
+
 import app.core.database as app_db
-from app.main import app
 from app.firebase_auth import verify_firebase_token
-
-
-
+from app.main import app
 
 # ─── Mock Database Client ─────────────────────────────────────
+
 
 class MockCursor:
     def __init__(self, data):
@@ -74,19 +73,22 @@ class MockCollection:
         if "_id" not in doc:
             doc["_id"] = ObjectId()
         self.db.data[self.name].append(doc)
-        
+
         class InsertResult:
             def __init__(self, inserted_id):
                 self.inserted_id = inserted_id
+
         return InsertResult(doc["_id"])
 
     async def update_one(self, query, update_op):
         results = self._filter(query)
         if not results:
+
             class UpdateResult:
                 modified_count = 0
+
             return UpdateResult()
-        
+
         doc = results[0]
         if "$set" in update_op:
             for k, v in update_op["$set"].items():
@@ -99,21 +101,26 @@ class MockCollection:
         if "$inc" in update_op:
             for k, v in update_op["$inc"].items():
                 doc[k] = doc.get(k, 0) + v
-                
+
         class UpdateResult:
             modified_count = 1
+
         return UpdateResult()
 
     async def delete_one(self, query):
         results = self._filter(query)
         if not results:
+
             class DeleteResult:
                 deleted_count = 0
+
             return DeleteResult()
-        
+
         self.db.data[self.name].remove(results[0])
+
         class DeleteResult:
             deleted_count = 1
+
         return DeleteResult()
 
     def _filter(self, query):
@@ -143,7 +150,6 @@ class MockCollection:
                 matched.append(doc)
         return matched
 
-
     async def aggregate(self, pipeline):
         # Implement dynamic python-based aggregation matching our endpoints
         # Workload aggregation (Feature B2)
@@ -158,11 +164,7 @@ class MockCollection:
 
 class MockDatabase:
     def __init__(self):
-        self.data = {
-            "users": [],
-            "tasks": [],
-            "audit_logs": []
-        }
+        self.data = {"users": [], "tasks": [], "audit_logs": []}
         self.users = MockCollection("users", self)
         self.tasks = MockCollection("tasks", self)
         self.audit_logs = MockCollection("audit_logs", self)
@@ -175,8 +177,9 @@ class MockDatabase:
 
 bearer_scheme = HTTPBearer()
 
+
 async def mock_verify_firebase_token(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> dict:
     token = credentials.credentials
     if token == "manager-token":
@@ -192,6 +195,7 @@ async def mock_verify_firebase_token(
 
 # ─── Pytest Fixtures ───────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def setup_mocks():
     # Setup mock database
@@ -199,22 +203,24 @@ def setup_mocks():
     app_db._database = mock_db
 
     # Insert default users
-    mock_db.data["users"].extend([
-        {
-            "_id": ObjectId(),
-            "firebase_uid": "uid-mgr",
-            "email": "mgr@test.com",
-            "name": "Test Manager",
-            "role": "manager"
-        },
-        {
-            "_id": ObjectId(),
-            "firebase_uid": "uid-emp",
-            "email": "emp@test.com",
-            "name": "Test Employee",
-            "role": "employee"
-        }
-    ])
+    mock_db.data["users"].extend(
+        [
+            {
+                "_id": ObjectId(),
+                "firebase_uid": "uid-mgr",
+                "email": "mgr@test.com",
+                "name": "Test Manager",
+                "role": "manager",
+            },
+            {
+                "_id": ObjectId(),
+                "firebase_uid": "uid-emp",
+                "email": "emp@test.com",
+                "name": "Test Employee",
+                "role": "employee",
+            },
+        ]
+    )
 
     # Override dependencies
     app.dependency_overrides[verify_firebase_token] = mock_verify_firebase_token

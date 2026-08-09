@@ -43,3 +43,5 @@ Thumbs.db
 
 # Kubernetes secrets with real values
 k8s/secrets-real.yml
+.vercel
+.env*

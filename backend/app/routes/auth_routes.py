@@ -8,14 +8,17 @@ Flow:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.core.database import get_database
 from app.firebase_auth import verify_firebase_token
 from app.models.user import UserCreate, UserResponse
-from app.core.database import get_database
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
+)
 async def register_user(
     user_data: UserCreate,
     decoded_token: dict = Depends(verify_firebase_token),

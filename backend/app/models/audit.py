@@ -1,9 +1,12 @@
-from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 
+from pydantic import BaseModel
+
+
 class AuditLogEntry(BaseModel):
     """Schema representing a single transition or mutation audit entry for tasks."""
+
     task_id: str
     action: str  # "created", "started", "submitted", "confirmed", "rejected", "updated", "deleted"
     performed_by: str  # Firebase UID
