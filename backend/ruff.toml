@@ -3,3 +3,6 @@ ignore = ["E402"]
 
 [lint.per-file-ignores]
 "app/main.py" = ["E402"]
+
+[lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body", "fastapi.Header", "fastapi.Cookie", "app.middleware.role_guard.require_role"]

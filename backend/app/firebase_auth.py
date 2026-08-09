@@ -2,7 +2,7 @@ import os
 import json
 import firebase_admin
 from firebase_admin import credentials, auth
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.config import FIREBASE_SERVICE_ACCOUNT_PATH
 
@@ -44,5 +44,5 @@ async def verify_firebase_token(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Firebase ID token has expired. Please re-authenticate.")
     except auth.RevokedIdTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Firebase ID token has been revoked.")
-    except Exception as e:
+    except ValueError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Could not verify credentials: {e!s}")

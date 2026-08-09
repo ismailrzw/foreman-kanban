@@ -45,8 +45,10 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
     deadline = doc.get("deadline")
     is_overdue = False
     if deadline and doc.get("stage") != "done":
-        now = datetime.now(timezone.utc) if deadline.tzinfo else datetime.now()
-        is_overdue = deadline < now
+        now = datetime.now(timezone.utc)
+        # if deadline is naive, we can make it aware
+        aware_deadline = deadline.replace(tzinfo=timezone.utc) if not deadline.tzinfo else deadline
+        is_overdue = aware_deadline < now
 
     return TaskResponse(
         id=str(doc["_id"]),
