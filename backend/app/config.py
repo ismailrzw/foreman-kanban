@@ -4,6 +4,7 @@ Configuration module — loads environment variables with sensible defaults.
 """
 
 import os
+
 from dotenv import load_dotenv
 
 # Load .env file

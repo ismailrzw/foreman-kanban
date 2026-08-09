@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
 from bson import ObjectId
-from app.middleware.role_guard import require_role
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.core.database import get_database
+from app.middleware.role_guard import require_role
 from app.models.audit import AuditLogEntry
 
 router = APIRouter(prefix="/api", tags=["audit"])

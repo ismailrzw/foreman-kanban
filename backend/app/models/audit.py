@@ -1,5 +1,7 @@
-from pydantic import BaseModel
 from datetime import datetime
+
+from pydantic import BaseModel
+
 
 class AuditLogEntry(BaseModel):
     """Schema representing a single transition or mutation audit entry for tasks."""

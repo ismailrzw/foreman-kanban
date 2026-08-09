@@ -1,10 +1,13 @@
-import os
 import json
+import os
+
 import firebase_admin
-from firebase_admin import credentials, auth
-from fastapi import HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from firebase_admin import auth, credentials
+
 from app.config import FIREBASE_SERVICE_ACCOUNT_PATH
+
 
 def initialize_firebase_admin():
     try:

@@ -8,9 +8,10 @@ Flow:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.core.database import get_database
 from app.firebase_auth import verify_firebase_token
 from app.models.user import UserCreate, UserResponse
-from app.core.database import get_database
 
 router = APIRouter(prefix="/api", tags=["auth"])
 

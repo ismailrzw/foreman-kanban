@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
-from app.middleware.role_guard import require_role
+
 from app.core.database import get_database
+from app.middleware.role_guard import require_role
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 

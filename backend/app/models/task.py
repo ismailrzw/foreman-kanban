@@ -9,7 +9,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # Valid stage values — these map to Kanban columns
 StageType = Literal["todo", "in_progress", "submitted_for_review", "done"]
 
