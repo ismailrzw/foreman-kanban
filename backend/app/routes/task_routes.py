@@ -19,6 +19,7 @@ The core PR-review-merge flow:
 """
 
 from datetime import datetime, timezone
+from typing import Optional, List
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -37,8 +38,7 @@ from app.utils.status_machine import validate_transition
 router = APIRouter(prefix="/api", tags=["tasks"])
 
 
-
-def task_doc_to_response(doc: dict, users_cache: dict | None = None) -> TaskResponse:
+def task_doc_to_response(doc: dict, users_cache: Optional[dict] = None) -> TaskResponse:
     """Convert a MongoDB task document to a TaskResponse schema."""
     assigned_to_name = None
     if users_cache and doc.get("assigned_to") in users_cache:
@@ -73,11 +73,9 @@ def task_doc_to_response(doc: dict, users_cache: dict | None = None) -> TaskResp
     )
 
 
-
-
 # ─── LIST TASKS ──────────────────────────────────────────────
 
-@router.get("/tasks", response_model=list[TaskResponse])
+@router.get("/tasks", response_model=List[TaskResponse])
 async def list_tasks(
     current_user: dict = Depends(require_role()),  # Any authenticated user
 ):
@@ -149,7 +147,6 @@ async def create_task(
         "updated_at": now,
     }
 
-
     result = await db.tasks.insert_one(doc)
     doc["_id"] = result.inserted_id
     await log_audit(task_id=str(result.inserted_id), action="created", user=current_user, new_stage="todo")
@@ -157,7 +154,6 @@ async def create_task(
     # Get assignee name for response
     users_cache = {employee["firebase_uid"]: employee["name"]}
     return task_doc_to_response(doc, users_cache)
-
 
 
 # ─── UPDATE TASK (Manager only) ─────────────────────────────
@@ -183,7 +179,6 @@ async def update_task(
 
     # Build update dict (only explicitly set fields)
     update_fields = task_data.model_dump(exclude_unset=True)
-
 
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update.")
@@ -214,7 +209,6 @@ async def update_task(
     return task_doc_to_response(updated)
 
 
-
 # ─── DELETE TASK (Manager only) ──────────────────────────────
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -239,7 +233,6 @@ async def delete_task(
         user=current_user,
         previous_stage=task["stage"]
     )
-
 
 
 # ─── SUBMIT FOR REVIEW (Employee only) ──────────────────────
@@ -303,7 +296,6 @@ async def submit_for_review(
     return task_doc_to_response(updated)
 
 
-
 # ─── START TASK (Employee only) ──────────────────────────────
 
 @router.post("/tasks/{task_id}/start", response_model=TaskResponse)
@@ -353,7 +345,6 @@ async def start_task(
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
     return task_doc_to_response(updated)
-
 
 
 # ─── REVIEW TASK (Manager only) ─────────────────────────────
@@ -416,7 +407,6 @@ async def review_task(
             new_stage="done"
         )
 
-
     elif review_data.action == "reject":
         if not review_data.feedback:
             raise HTTPException(
@@ -471,7 +461,7 @@ async def review_task(
 
 # ─── OVERDUE TASKS (Manager only) ─────────────────────────────
 
-@router.get("/tasks/overdue", response_model=list[TaskResponse])
+@router.get("/tasks/overdue", response_model=List[TaskResponse])
 async def get_overdue_tasks(
     current_user: dict = Depends(require_role("manager")),
 ):

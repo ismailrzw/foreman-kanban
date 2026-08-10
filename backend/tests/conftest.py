@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Optional
 from unittest.mock import MagicMock
 
 import firebase_admin
@@ -17,7 +18,7 @@ os.environ["FIREBASE_SERVICE_ACCOUNT_JSON"] = json.dumps({
 
 import pytest
 from bson import ObjectId
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.testclient import TestClient
 
@@ -173,8 +174,13 @@ class MockDatabase:
 bearer_scheme = HTTPBearer()
 
 async def mock_verify_firebase_token(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = None,
 ) -> dict:
+    # If credentials not provided, extract from request (should not happen in tests)
+    if credentials is None:
+        credentials = await bearer_scheme.__call__(request)
+
     token = credentials.credentials
     if token == "manager-token":
         return {"uid": "uid-mgr", "email": "mgr@test.com"}
@@ -213,7 +219,7 @@ def setup_mocks():
         }
     ])
 
-    # Override dependencies
+    # Override dependencies — match original signature
     app.dependency_overrides[verify_firebase_token] = mock_verify_firebase_token
 
     yield mock_db

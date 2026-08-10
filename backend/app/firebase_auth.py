@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Optional
 
 import firebase_admin
 from fastapi import HTTPException, Request, status
@@ -33,7 +34,7 @@ bearer_scheme = HTTPBearer()
 
 async def verify_firebase_token(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None = None,
+    credentials: Optional[HTTPAuthorizationCredentials] = None,
 ) -> dict:
     if credentials is None:
         credentials = await bearer_scheme.__call__(request)
