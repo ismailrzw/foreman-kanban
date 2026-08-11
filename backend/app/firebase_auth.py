@@ -1,6 +1,5 @@
 import json
 import os
-from typing import Optional
 
 import firebase_admin
 from fastapi import HTTPException, Request, status
@@ -27,14 +26,16 @@ def initialize_firebase_admin():
         print(f"Failed to initialize Firebase Admin SDK: {e!s}")
         raise
 
+
 if not firebase_admin._apps:
     initialize_firebase_admin()
 
 bearer_scheme = HTTPBearer()
 
+
 async def verify_firebase_token(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = None,
+    credentials: HTTPAuthorizationCredentials | None = None,  # ✅ modern union
 ) -> dict:
     if credentials is None:
         credentials = await bearer_scheme.__call__(request)

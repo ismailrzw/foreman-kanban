@@ -1,6 +1,5 @@
 import json
 import os
-from typing import Optional
 from unittest.mock import MagicMock
 
 import firebase_admin
@@ -174,8 +173,8 @@ class MockDatabase:
 bearer_scheme = HTTPBearer()
 
 async def mock_verify_firebase_token(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = None,
+    request: Request,                      # ✅ matches real signature
+    credentials: HTTPAuthorizationCredentials | None = None,  # ✅ modern union
 ) -> dict:
     # If credentials not provided, extract from request (should not happen in tests)
     if credentials is None:
@@ -219,7 +218,7 @@ def setup_mocks():
         }
     ])
 
-    # Override dependencies — match original signature
+    # Override with the correctly‑shaped mock
     app.dependency_overrides[verify_firebase_token] = mock_verify_firebase_token
 
     yield mock_db

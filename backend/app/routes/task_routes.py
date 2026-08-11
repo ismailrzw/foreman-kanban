@@ -19,7 +19,6 @@ The core PR-review-merge flow:
 """
 
 from datetime import datetime, timezone
-from typing import Optional, List
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -38,7 +37,7 @@ from app.utils.status_machine import validate_transition
 router = APIRouter(prefix="/api", tags=["tasks"])
 
 
-def task_doc_to_response(doc: dict, users_cache: Optional[dict] = None) -> TaskResponse:
+def task_doc_to_response(doc: dict, users_cache: dict | None = None) -> TaskResponse:
     """Convert a MongoDB task document to a TaskResponse schema."""
     assigned_to_name = None
     if users_cache and doc.get("assigned_to") in users_cache:
@@ -75,7 +74,7 @@ def task_doc_to_response(doc: dict, users_cache: Optional[dict] = None) -> TaskR
 
 # ─── LIST TASKS ──────────────────────────────────────────────
 
-@router.get("/tasks", response_model=List[TaskResponse])
+@router.get("/tasks", response_model=list[TaskResponse])
 async def list_tasks(
     current_user: dict = Depends(require_role()),  # Any authenticated user
 ):
@@ -461,7 +460,7 @@ async def review_task(
 
 # ─── OVERDUE TASKS (Manager only) ─────────────────────────────
 
-@router.get("/tasks/overdue", response_model=List[TaskResponse])
+@router.get("/tasks/overdue", response_model=list[TaskResponse])
 async def get_overdue_tasks(
     current_user: dict = Depends(require_role("manager")),
 ):

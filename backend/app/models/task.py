@@ -5,7 +5,7 @@ The submitted_for_review → done/rejected transition mirrors a PR review/merge 
 """
 
 from datetime import datetime
-from typing import Literal, Optional, List
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -22,17 +22,17 @@ class TaskCreate(BaseModel):
     description: str = Field(default="", max_length=1000, description="Task description")
     assigned_to: str = Field(..., description="Firebase UID of the assigned employee")
     complexity: ComplexityType = Field(default=2, description="1=Low, 2=Medium, 3=High")
-    deadline: Optional[datetime] = Field(None, description="Optional deadline — ISO 8601 format")
+    deadline: datetime | None = Field(None, description="Optional deadline — ISO 8601 format")
 
 
 class TaskUpdate(BaseModel):
     """Schema for updating a task (Manager only)."""
-    title: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
-    assigned_to: Optional[str] = None
-    complexity: Optional[ComplexityType] = None
-    stage: Optional[StageType] = None
-    deadline: Optional[datetime] = None
+    title: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=1000)
+    assigned_to: str | None = None
+    complexity: ComplexityType | None = None
+    stage: StageType | None = None
+    deadline: datetime | None = None
 
 
 class TaskSubmitForReview(BaseModel):
@@ -42,7 +42,7 @@ class TaskSubmitForReview(BaseModel):
 class TaskReviewAction(BaseModel):
     """Schema for manager confirming or rejecting a submission."""
     action: Literal["confirm", "reject"] = Field(..., description="confirm or reject")
-    feedback: Optional[str] = Field(
+    feedback: str | None = Field(
         None, max_length=500, description="Required when rejecting — reason for rejection"
     )
 
@@ -61,16 +61,16 @@ class TaskResponse(BaseModel):
     title: str
     description: str
     assigned_to: str
-    assigned_to_name: Optional[str] = None
+    assigned_to_name: str | None = None
     complexity: ComplexityType
     stage: StageType
     is_rejected: bool = False
-    rejection_feedback: Optional[str] = None
-    revision_history: List[RevisionEntry] = Field(default_factory=list)
+    rejection_feedback: str | None = None
+    revision_history: list[RevisionEntry] = Field(default_factory=list)  # ✅ fixed mutable default
     revision_count: int = 0
-    deadline: Optional[datetime] = None
+    deadline: datetime | None = None
     is_overdue: bool = False
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     created_by: str
     created_at: datetime
     updated_at: datetime
