@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="100%" height="100%" style="background:#15130F; font-family: 'Inter', system-ui, sans-serif;">
+  <!-- Topbar -->
+  <rect x="0" y="0" width="1000" height="50" fill="#1C1914" stroke="#2D271F" stroke-width="1"/>
+  <circle cx="25" cy="25" r="6" fill="#E8A23D"/>
+  <text x="40" y="30" fill="#F4EFE6" font-family="'Oswald', sans-serif" font-size="16" font-weight="700" letter-spacing="1">FOREMAN</text>
+  <line x1="125" y1="15" x2="125" y2="35" stroke="#332D24" stroke-width="1"/>
+  <text x="140" y="30" fill="#A09585" font-size="13">My Work Orders — Employee View</text>
+  
+  <!-- Employee Avatar Badge -->
+  <rect x="820" y="10" width="120" height="30" rx="15" fill="#2A241C" stroke="#3B82F6" stroke-width="1"/>
+  <circle cx="835" cy="25" r="10" fill="#3B82F6"/>
+  <text x="835" y="29" fill="#FFFFFF" font-size="10" font-weight="700" text-anchor="middle">SK</text>
+  <text x="852" y="24" fill="#F4EFE6" font-size="11" font-weight="700">Saad Khan</text>
+  <text x="852" y="34" fill="#3B82F6" font-size="9">Employee</text>
+
+  <!-- Page Head -->
+  <g transform="translate(40, 75)">
+    <text x="0" y="20" fill="#F4EFE6" font-family="'Oswald', sans-serif" font-size="22" font-weight="700">MY WORK ORDERS</text>
+    <text x="0" y="40" fill="#A09585" font-size="12">Jobs assigned to you. Submit finished work for inspection — Manager signs off before it counts as done.</text>
+  </g>
+
+  <!-- Kanban Columns -->
+  <!-- Col 1: To Do -->
+  <g transform="translate(40, 140)">
+    <rect x="0" y="0" width="215" height="440" rx="8" fill="#1A1712" stroke="#2D271F"/>
+    <text x="16" y="25" fill="#A09585" font-weight="700" font-size="12">TO DO (1)</text>
+    
+    <!-- Paper Ticket 1 -->
+    <g transform="translate(10, 40)">
+      <rect x="0" y="0" width="195" height="150" rx="4" fill="#FAF6EC"/>
+      <circle cx="97" cy="10" r="4" fill="#D9534F"/>
+      <text x="12" y="32" fill="#15130F" font-size="12" font-weight="700">Optimize Mongo Indexing</text>
+      <text x="12" y="50" fill="#555" font-size="10">Add index on firebase_uid field</text>
+      <text x="12" y="100" fill="#888" font-size="10">Complexity: Low (●○○)</text>
+      <rect x="12" y="112" width="171" height="28" rx="4" fill="#E8A23D"/>
+      <text x="97" y="130" fill="#15130F" font-size="11" font-weight="700" text-anchor="middle">Start Job</text>
+    </g>
+  </g>
+
+  <!-- Col 2: In Progress -->
+  <g transform="translate(275, 140)">
+    <rect x="0" y="0" width="215" height="440" rx="8" fill="#1A1712" stroke="#2D271F"/>
+    <text x="16" y="25" fill="#3B82F6" font-weight="700" font-size="12">IN PROGRESS (1)</text>
+
+    <!-- Paper Ticket 2 (With Rework Note & Action) -->
+    <g transform="translate(10, 40)">
+      <rect x="0" y="0" width="195" height="180" rx="4" fill="#FAF6EC" stroke="#C62828" stroke-width="1.5"/>
+      <circle cx="97" cy="10" r="4" fill="#D9534F"/>
+      <text x="12" y="30" fill="#15130F" font-size="12" font-weight="700">Refactor CORS Policy</text>
+      <rect x="10" y="40" width="175" height="44" rx="4" fill="#FFEBEE"/>
+      <text x="16" y="54" fill="#C62828" font-size="10" font-weight="700">Sent back by Manager:</text>
+      <text x="16" y="70" fill="#C62828" font-size="9">Explicit origins needed for Vercel.</text>
+      
+      <rect x="12" y="140" width="171" height="28" rx="4" fill="#3B82F6"/>
+      <text x="97" y="158" fill="#FFFFFF" font-size="11" font-weight="700" text-anchor="middle">Resubmit for Inspection</text>
+    </g>
+  </g>
+
+  <!-- Col 3: For Inspection -->
+  <g transform="translate(510, 140)">
+    <rect x="0" y="0" width="215" height="440" rx="8" fill="#1A1712" stroke="#E8A23D" stroke-width="1"/>
+    <text x="16" y="25" fill="#E8A23D" font-weight="700" font-size="12">FOR INSPECTION (1)</text>
+
+    <!-- Paper Ticket 3 -->
+    <g transform="translate(10, 40)">
+      <rect x="0" y="0" width="195" height="150" rx="4" fill="#FAF6EC"/>
+      <circle cx="97" cy="10" r="4" fill="#D9534F"/>
+      <text x="12" y="32" fill="#15130F" font-size="12" font-weight="700">Fix Nginx Upstream</text>
+      <text x="12" y="50" fill="#555" font-size="10">Proxy pass configuration</text>
+      <rect x="12" y="112" width="171" height="28" rx="4" fill="#E0DCD3"/>
+      <text x="97" y="130" fill="#777777" font-size="11" font-weight="600" text-anchor="middle">Awaiting Inspection…</text>
+    </g>
+  </g>
+
+  <!-- Col 4: Signed Off -->
+  <g transform="translate(745, 140)">
+    <rect x="0" y="0" width="215" height="440" rx="8" fill="#1A1712" stroke="#2D271F"/>
+    <text x="16" y="25" fill="#4CAF50" font-weight="700" font-size="12">SIGNED OFF (1)</text>
+
+    <!-- Paper Ticket 4 (Stamped Approved) -->
+    <g transform="translate(10, 40)">
+      <rect x="0" y="0" width="195" height="150" rx="4" fill="#FAF6EC"/>
+      <circle cx="97" cy="10" r="4" fill="#D9534F"/>
+      <text x="12" y="32" fill="#15130F" font-size="12" font-weight="700">FastAPI Async Drivers</text>
+      
+      <!-- Stamp Overlay -->
+      <rect x="25" y="55" width="145" height="40" rx="4" fill="none" stroke="#2E7D32" stroke-width="3" transform="rotate(-8 97 75)"/>
+      <text x="97" y="80" fill="#2E7D32" font-family="'Oswald', sans-serif" font-size="20" font-weight="700" text-anchor="middle" transform="rotate(-8 97 75)">APPROVED</text>
+
+      <rect x="12" y="112" width="171" height="28" rx="4" fill="#E8F5E9"/>
+      <text x="97" y="130" fill="#2E7D32" font-size="11" font-weight="700" text-anchor="middle">Signed Off ✓</text>
+    </g>
+  </g>
+</svg>

@@ -10,7 +10,7 @@ async def log_audit(
     user: dict,
     previous_stage: str | None = None,
     new_stage: str | None = None,
-    details: str | None = None,
+    details: str | None = None
 ):
     """
     Inserts a new AuditLogEntry document into the database audit_logs collection.
@@ -25,6 +25,6 @@ async def log_audit(
         previous_stage=previous_stage,
         new_stage=new_stage,
         details=details,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(timezone.utc)
     )
     await db.audit_logs.insert_one(entry.model_dump())

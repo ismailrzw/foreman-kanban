@@ -1,9 +1,19 @@
-def test_placeholder():
-    """
-    Placeholder test so pytest does not exit with code 5
-    when no tests have been implemented yet.
+"""
+Health check endpoint tests.
+Verifies that the /api/health endpoint returns status 200 and healthy JSON response.
+"""
 
-    This file exists only to keep CI passing until
-    real backend tests are added.
-    """
-    assert True
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_health_check():
+    """Verify that GET /api/health returns HTTP 200 and status healthy."""
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "foreman-backend"

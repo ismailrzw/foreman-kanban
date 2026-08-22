@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="100%" height="100%" style="background:#15130F; font-family: 'Inter', system-ui, sans-serif;">
+  <!-- Topbar -->
+  <rect x="0" y="0" width="1000" height="50" fill="#1C1914" stroke="#2D271F" stroke-width="1"/>
+  <circle cx="25" cy="25" r="6" fill="#E8A23D"/>
+  <text x="40" y="30" fill="#F4EFE6" font-family="'Oswald', sans-serif" font-size="16" font-weight="700" letter-spacing="1">FOREMAN</text>
+  <line x1="125" y1="15" x2="125" y2="35" stroke="#332D24" stroke-width="1"/>
+  <text x="140" y="30" fill="#A09585" font-size="13">Job Board — Manager View</text>
+  
+  <!-- Manager Avatar Badge -->
+  <rect x="820" y="10" width="120" height="30" rx="15" fill="#2A241C" stroke="#E8A23D" stroke-width="1"/>
+  <circle cx="835" cy="25" r="10" fill="#E8A23D"/>
+  <text x="835" y="29" fill="#15130F" font-size="10" font-weight="700" text-anchor="middle">IM</text>
+  <text x="852" y="24" fill="#F4EFE6" font-size="11" font-weight="700">Ismail M.</text>
+  <text x="852" y="34" fill="#E8A23D" font-size="9">Manager</text>
+
+  <!-- Page Head -->
+  <g transform="translate(40, 75)">
+    <text x="0" y="20" fill="#F4EFE6" font-family="'Oswald', sans-serif" font-size="22" font-weight="700">JOB BOARD</text>
+    <text x="0" y="40" fill="#A09585" font-size="12">Open new work orders, assign crew, and inspect what comes back.</text>
+    <rect x="760" y="0" width="160" height="36" rx="6" fill="#E8A23D"/>
+    <text x="840" y="22" fill="#15130F" font-size="13" font-weight="700" text-anchor="middle">+ New Work Order</text>
+  </g>
+
+  <!-- Inspection Queue Panel -->
+  <g transform="translate(40, 135)">
+    <rect x="0" y="0" width="920" height="110" rx="8" fill="#1C1914" stroke="#E8A23D" stroke-width="1.5"/>
+    <rect x="0" y="0" width="920" height="32" rx="8" fill="#241F18"/>
+    <text x="16" y="21" fill="#E8A23D" font-weight="700" font-size="13">INSPECTION QUEUE (PR INBOX)</text>
+    <rect x="230" y="7" width="24" height="18" rx="9" fill="#E8A23D"/>
+    <text x="242" y="20" fill="#15130F" font-size="11" font-weight="700" text-anchor="middle">1</text>
+
+    <!-- Inspection Queue Item -->
+    <rect x="16" y="44" width="888" height="52" rx="6" fill="#14120E" stroke="#332D24"/>
+    <text x="32" y="66" fill="#FAF6EC" font-size="13" font-weight="600">Fix Nginx Upstream Timeout &amp; Proxy Headers</text>
+    <text x="32" y="83" fill="#A09585" font-size="11">#66b1a2f · Submitted by Saad Khan · Complexity: High (●●●)</text>
+
+    <!-- Queue Action Buttons -->
+    <rect x="680" y="55" width="100" height="30" rx="4" fill="#2E7D32"/>
+    <text x="730" y="74" fill="#FFFFFF" font-size="11" font-weight="700" text-anchor="middle">Confirm ✓</text>
+
+    <rect x="790" y="55" width="100" height="30" rx="4" fill="#C62828"/>
+    <text x="840" y="74" fill="#FFFFFF" font-size="11" font-weight="700" text-anchor="middle">Send Back ↩</text>
+  </g>
+
+  <!-- Kanban Columns -->
+  <!-- Col 1: To Do -->
+  <g transform="translate(40, 265)">
+    <rect x="0" y="0" width="215" height="330" rx="8" fill="#1A1712" stroke="#2D271F"/>
+    <text x="16" y="25" fill="#A09585" font-weight="700" font-size="12">TO DO (1)</text>
+    
+    <!-- Paper Ticket 1 -->
+    <g transform="translate(10, 40)">
+      <rect x="0" y="0" width="195" height="120" rx="4" fill="#FAF6EC"/>
+      <circle cx="97" cy="10" r="4" fill="#D9534F"/>
+      <text x="12" y="32" fill="#15130F" font-size="12" font-weight="700">Setup K8s Ingress Rules</text>
+      <text x="12" y="50" fill="#555" font-size="10">Configure host routes minikube</text>
+      <text x="12" y="102" fill="#888" font-size="10">Assigned: Ibrahim</text>
+    </g>
+  </g>
+
+  <!-- Col 2: In Progress -->
+  <g transform="translate(275, 265)">
+    <rect x="0" y="0" width="215" height="330" rx="8" fill="#1A1712" stroke="#2D271F"/>
+    <text x="16" y="25" fill="#3B82F6" font-weight="700" font-size="12">IN PROGRESS (1)</text>
+
+    <!-- Paper Ticket 2 (With Rework Note) -->
+    <g transform="translate(10, 40)">
+      <rect x="0" y="0" width="195" height="150" rx="4" fill="#FAF6EC" stroke="#C62828" stroke-width="1.5"/>
+      <circle cx="97" cy="10" r="4" fill="#D9534F"/>
+      <text x="12" y="30" fill="#15130F" font-size="12" font-weight="700">Refactor CORS Policy</text>
+      <rect x="10" y="40" width="175" height="42" rx="4" fill="#FFEBEE"/>
+      <text x="16" y="54" fill="#C62828" font-size="10" font-weight="700">Sent back by Manager:</text>
+      <text x="16" y="70" fill="#C62828" font-size="9">Explicit origins needed for Vercel.</text>
+      <text x="12" y="132" fill="#888" font-size="10">Assigned: Saad</text>
+    </g>
+  </g>
+
+  <!-- Col 3: For Inspection -->
+  <g transform="translate(510, 265)">
+    <rect x="0" y="0" width="215" height="330" rx="8" fill="#1A1712" stroke="#E8A23D" stroke-width="1"/>
+    <text x="16" y="25" fill="#E8A23D" font-weight="700" font-size="12">FOR INSPECTION (1)</text>
+
+    <!-- Paper Ticket 3 -->
+    <g transform="translate(10, 40)">
+      <rect x="0" y="0" width="195" height="120" rx="4" fill="#FAF6EC"/>
+      <circle cx="97" cy="10" r="4" fill="#D9534F"/>
+      <text x="12" y="32" fill="#15130F" font-size="12" font-weight="700">Fix Nginx Upstream</text>
+      <text x="12" y="50" fill="#555" font-size="10">Submitted for review</text>
+      <text x="12" y="102" fill="#888" font-size="10">Assigned: Saad</text>
+    </g>
+  </g>
+
+  <!-- Col 4: Signed Off -->
+  <g transform="translate(745, 265)">
+    <rect x="0" y="0" width="215" height="330" rx="8" fill="#1A1712" stroke="#2D271F"/>
+    <text x="16" y="25" fill="#4CAF50" font-weight="700" font-size="12">SIGNED OFF (1)</text>
+
+    <!-- Paper Ticket 4 (Stamped Approved) -->
+    <g transform="translate(10, 40)">
+      <rect x="0" y="0" width="195" height="120" rx="4" fill="#FAF6EC"/>
+      <circle cx="97" cy="10" r="4" fill="#D9534F"/>
+      <text x="12" y="32" fill="#15130F" font-size="12" font-weight="700">FastAPI Async Drivers</text>
+      
+      <!-- Stamp Overlay -->
+      <rect x="25" y="45" width="145" height="40" rx="4" fill="none" stroke="#2E7D32" stroke-width="3" transform="rotate(-8 97 65)"/>
+      <text x="97" y="70" fill="#2E7D32" font-family="'Oswald', sans-serif" font-size="20" font-weight="700" text-anchor="middle" transform="rotate(-8 97 65)">APPROVED</text>
+    </g>
+  </g>
+</svg>

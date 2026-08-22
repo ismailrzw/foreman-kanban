@@ -41,6 +41,7 @@ app.add_middleware(
         "http://localhost:5173",  # Vite dev server
         "http://localhost:3000",  # Alternative dev port
     ],
+    allow_origin_regex=r"https://foreman-kanban.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
