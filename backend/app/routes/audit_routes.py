@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
 from bson import ObjectId
-from app.middleware.role_guard import require_role
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.core.database import get_database
+from app.middleware.role_guard import require_role
 from app.models.audit import AuditLogEntry
 
 router = APIRouter(prefix="/api", tags=["audit"])
+
 
 @router.get("/tasks/{task_id}/audit", response_model=list[AuditLogEntry])
 async def get_task_audit(
@@ -23,6 +25,7 @@ async def get_task_audit(
     async for doc in cursor:
         logs.append(AuditLogEntry(**doc))
     return logs
+
 
 @router.get("/audit/recent", response_model=list[AuditLogEntry])
 async def get_recent_audit(

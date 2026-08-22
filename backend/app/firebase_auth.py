@@ -4,15 +4,18 @@ Firebase Admin SDK initialization and ID token verification.
 Supports both file-based (local/dev) and environment variable (cloud) service accounts.
 """
 
-import os
 import json
+import os
+
 import firebase_admin
-from firebase_admin import credentials, auth
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from firebase_admin import auth, credentials
+
 from app.config import FIREBASE_SERVICE_ACCOUNT_PATH
 
 # ─── Initialize Firebase Admin SDK ─────────────────────────
+
 
 def initialize_firebase_admin():
     """
@@ -30,19 +33,24 @@ def initialize_firebase_admin():
             firebase_admin.initialize_app(cred)
             print("✔ Firebase Admin SDK initialized from environment variable")
             return
-        
+
         # Fallback to file-based (local development)
         if os.path.exists(FIREBASE_SERVICE_ACCOUNT_PATH):
             cred = credentials.Certificate(FIREBASE_SERVICE_ACCOUNT_PATH)
             firebase_admin.initialize_app(cred)
-            print(f"✔ Firebase Admin SDK initialized from file: {FIREBASE_SERVICE_ACCOUNT_PATH}")
+            print(
+                f"✔ Firebase Admin SDK initialized from file: {FIREBASE_SERVICE_ACCOUNT_PATH}"
+            )
             return
-        
-        raise FileNotFoundError(f"Service account not found at {FIREBASE_SERVICE_ACCOUNT_PATH}")
-    
+
+        raise FileNotFoundError(
+            f"Service account not found at {FIREBASE_SERVICE_ACCOUNT_PATH}"
+        )
+
     except Exception as e:
         print(f"❌ Failed to initialize Firebase Admin SDK: {e}")
         raise
+
 
 # Initialize only if not already initialized
 if not firebase_admin._apps:
@@ -50,6 +58,7 @@ if not firebase_admin._apps:
 
 # FastAPI security scheme
 bearer_scheme = HTTPBearer()
+
 
 async def verify_firebase_token(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
@@ -71,8 +80,8 @@ async def verify_firebase_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Firebase ID token has expired. Please re-authenticate.",
         )
-    except Exception as e:
+    except (auth.FirebaseError, ValueError) as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not verify credentials: {str(e)}",
+            detail=f"Could not verify credentials: {e!s}",
         )

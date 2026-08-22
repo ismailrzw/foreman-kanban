@@ -4,9 +4,10 @@ Primary use: populating the "Assign to" dropdown when creating tasks.
 """
 
 from fastapi import APIRouter, Depends
+
+from app.core.database import get_database
 from app.middleware.role_guard import require_role
 from app.models.user import UserResponse
-from app.core.database import get_database
 
 router = APIRouter(prefix="/api", tags=["users"])
 
