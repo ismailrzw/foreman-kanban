@@ -43,3 +43,7 @@ Thumbs.db
 
 # Kubernetes secrets with real values
 k8s/secrets-real.yml
+
+# Custom analysis & standards context
+context.md
+PORTFOLIO-STANDARDS.md
