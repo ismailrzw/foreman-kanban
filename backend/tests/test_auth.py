@@ -7,7 +7,8 @@ and role enforcement middleware.
 
 import pytest
 from pydantic import ValidationError
-from app.models.user import UserCreate, UserResponse
+
+from app.models.user import UserCreate
 
 
 class TestUserModelValidation:

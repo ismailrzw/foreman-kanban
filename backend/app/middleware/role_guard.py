@@ -20,11 +20,12 @@ Usage in routes:
 """
 
 from fastapi import Depends, HTTPException, status
-from app.firebase_auth import verify_firebase_token
+
 from app.core.database import get_database
+from app.firebase_auth import verify_firebase_token
 
 
-def require_role(required_role: str = None):
+def require_role(required_role: str | None = None):
     """
     Factory that returns a FastAPI dependency.
     If required_role is None, any authenticated user is allowed.

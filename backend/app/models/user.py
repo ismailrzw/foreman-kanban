@@ -4,8 +4,9 @@ When a user signs up via Firebase Auth on the frontend, the frontend
 calls POST /api/register which creates this document in MongoDB.
 """
 
-from pydantic import BaseModel, Field
 from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class UserCreate(BaseModel):

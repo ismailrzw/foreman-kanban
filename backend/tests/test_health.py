@@ -4,6 +4,7 @@ Verifies that the /api/health endpoint returns status 200 and healthy JSON respo
 """
 
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 client = TestClient(app)

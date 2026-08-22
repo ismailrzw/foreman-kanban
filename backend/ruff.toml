@@ -1,5 +1,5 @@
 [lint]
-ignore = ["E402"]
+ignore = ["E402", "B008"]
 
 [lint.per-file-ignores]
 "app/main.py" = ["E402"]

@@ -3,11 +3,14 @@ FastAPI application entry point.
 Configures CORS, connects to MongoDB, and registers all route modules.
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
+
 from app.config import FRONTEND_URL
-from app.core.database import connect_db, close_db
+from app.core.database import close_db, connect_db
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,6 +41,7 @@ app.add_middleware(
         "http://localhost:5173",    # Vite dev server
         "http://localhost:3000",    # Alternative dev port
     ],
+    allow_origin_regex=r"https://foreman-kanban.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,11 +50,11 @@ app.add_middleware(
 # ─── Register Routes ─────────────────────────────────────────
 # Import routes AFTER app creation to avoid circular imports
 
+from app.routes.analytics_routes import router as analytics_router
+from app.routes.audit_routes import router as audit_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.task_routes import router as task_router
 from app.routes.user_routes import router as user_router
-from app.routes.audit_routes import router as audit_router
-from app.routes.analytics_routes import router as analytics_router
 
 app.include_router(auth_router)
 app.include_router(task_router)

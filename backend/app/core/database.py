@@ -1,4 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
+
 from app.config import MONGO_URI
 
 _db_client: AsyncIOMotorClient = None
@@ -13,7 +14,6 @@ async def connect_db():
 
 async def close_db():
     """Close MongoDB connection."""
-    global _db_client
     if _db_client:
         _db_client.close()
         print("✔ MongoDB connection closed.")

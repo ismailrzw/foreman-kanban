@@ -5,7 +5,6 @@ Tests the core domain feature: strict status state machine transition validation
 and role-authorized progression (PR review/merge analog).
 """
 
-import pytest
 from app.utils.status_machine import validate_transition
 
 

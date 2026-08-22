@@ -4,12 +4,14 @@ Firebase Admin SDK initialization and ID token verification.
 Supports both file-based (local/dev) and environment variable (cloud) service accounts.
 """
 
-import os
 import json
+import os
+
 import firebase_admin
-from firebase_admin import credentials, auth
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from firebase_admin import auth, credentials
+
 from app.config import FIREBASE_SERVICE_ACCOUNT_PATH
 
 # ─── Initialize Firebase Admin SDK ─────────────────────────
@@ -71,8 +73,8 @@ async def verify_firebase_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Firebase ID token has expired. Please re-authenticate.",
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not verify credentials: {str(e)}",
+            detail=f"Could not verify credentials: {e!s}",
         )

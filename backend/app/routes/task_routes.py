@@ -18,25 +18,27 @@ The core PR-review-merge flow:
   Manager calls POST /api/tasks/{id}/review with action=reject → stage becomes 'in_progress'
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from bson import ObjectId
 from datetime import datetime, timezone
+
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.core.database import get_database
 from app.middleware.role_guard import require_role
 from app.models.task import (
     TaskCreate,
-    TaskUpdate,
     TaskResponse,
     TaskReviewAction,
+    TaskUpdate,
 )
-from app.utils.status_machine import validate_transition
-from app.core.database import get_database
 from app.utils.audit_logger import log_audit
+from app.utils.status_machine import validate_transition
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
 
 
-def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
+def task_doc_to_response(doc: dict, users_cache: dict | None = None) -> TaskResponse:
     """Convert a MongoDB task document to a TaskResponse schema."""
     assigned_to_name = None
     if users_cache and doc.get("assigned_to") in users_cache:
@@ -45,7 +47,7 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
     deadline = doc.get("deadline")
     is_overdue = False
     if deadline and doc.get("stage") != "done":
-        now = datetime.now(timezone.utc) if deadline.tzinfo else datetime.now()
+        now = datetime.now(timezone.utc) if deadline.tzinfo else datetime.now()  # noqa: DTZ005
         is_overdue = deadline < now
 
     return TaskResponse(
