@@ -5,7 +5,8 @@
  * revision history integration, and batch sign-off ("Confirm All").
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import api from '../utils/api';
 import RejectPanel from './RejectPanel';
 
 function ComplexityDots({ level }) {
@@ -20,6 +21,19 @@ function ComplexityDots({ level }) {
 
 export default function InspectionQueue({ tasks, onConfirm, onReject }) {
   const [openRejectId, setOpenRejectId] = useState(null);
+  const [expandedTaskId, setExpandedTaskId] = useState(null);
+  const [revisions, setRevisions] = useState({});
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [confirmingAll, setConfirmingAll] = useState(false);
+  const [filterEmployee, setFilterEmployee] = useState('all');
+  const [filterComplexity, setFilterComplexity] = useState('all');
+  const [employees, setEmployees] = useState([]);
+
+  useEffect(() => {
+    api.get('/api/users/employees')
+      .then(res => setEmployees(res.data))
+      .catch(err => console.error('Failed to fetch employees for queue filter', err));
+  }, []);
 
   // Toggle detail expansion and fetch revision history
   const handleToggleExpand = async (taskId) => {
