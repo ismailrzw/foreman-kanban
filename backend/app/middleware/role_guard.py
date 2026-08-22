@@ -20,11 +20,12 @@ Usage in routes:
 """
 
 from fastapi import Depends, HTTPException, status
-from app.firebase_auth import verify_firebase_token
+
 from app.core.database import get_database
+from app.firebase_auth import verify_firebase_token
 
 
-def require_role(required_role: str = None):
+def require_role(required_role: str | None = None):
     """
     Factory that returns a FastAPI dependency.
     If required_role is None, any authenticated user is allowed.
@@ -43,9 +44,19 @@ def require_role(required_role: str = None):
         """
         db = get_database()
         uid = decoded_token["uid"]
+        email = decoded_token.get("email")
 
         # Look up user in MongoDB by Firebase UID
         user = await db.users.find_one({"firebase_uid": uid})
+        if not user and email:
+            user = await db.users.find_one({"email": email})
+            if user:
+                await db.users.update_one(
+                    {"_id": user["_id"]},
+                    {"$set": {"firebase_uid": uid}}
+                )
+                user["firebase_uid"] = uid
+
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -57,7 +68,7 @@ def require_role(required_role: str = None):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access denied. This endpoint requires the '{required_role}' role. "
-                       f"Your role is '{user.get('role')}'.",
+                f"Your role is '{user.get('role')}'.",
             )
 
         # Convert ObjectId to string for downstream use

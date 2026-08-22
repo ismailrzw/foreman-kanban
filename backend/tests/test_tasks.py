@@ -1,51 +1,51 @@
-import pytest
-from fastapi import status
 from datetime import datetime, timedelta, timezone
 
+from fastapi import status
+
+
 def test_rejection_history_flow(client, setup_mocks):
-    db = setup_mocks
-    
     # 1. Create a task (as Manager)
     create_payload = {
         "title": "Build CI Pipeline",
         "description": "Configure GitHub Actions",
         "assigned_to": "uid-emp",
-        "complexity": 2
+        "complexity": 2,
     }
     headers_mgr = {"Authorization": "Bearer manager-token"}
     response = client.post("/api/tasks", json=create_payload, headers=headers_mgr)
     assert response.status_code == status.HTTP_201_CREATED
     task = response.json()
     task_id = task["id"]
-    
+
     assert task["revision_count"] == 0
     assert task["revision_history"] == []
-    
+
     # 2. Start the task (as Employee)
     headers_emp = {"Authorization": "Bearer employee-token"}
     response = client.post(f"/api/tasks/{task_id}/start", headers=headers_emp)
     assert response.status_code == status.HTTP_200_OK
-    
+
     # 3. Submit the task (as Employee)
     response = client.post(f"/api/tasks/{task_id}/submit", headers=headers_emp)
     assert response.status_code == status.HTTP_200_OK
-    
+
     # 4. Reject the task without feedback (should fail)
-    reject_payload_no_feedback = {
-        "action": "reject"
-    }
-    response = client.post(f"/api/tasks/{task_id}/review", json=reject_payload_no_feedback, headers=headers_mgr)
+    reject_payload_no_feedback = {"action": "reject"}
+    response = client.post(
+        f"/api/tasks/{task_id}/review",
+        json=reject_payload_no_feedback,
+        headers=headers_mgr,
+    )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    
+
     # 5. Reject the task with feedback (as Manager)
-    reject_payload = {
-        "action": "reject",
-        "feedback": "Missing test coverage details."
-    }
-    response = client.post(f"/api/tasks/{task_id}/review", json=reject_payload, headers=headers_mgr)
+    reject_payload = {"action": "reject", "feedback": "Missing test coverage details."}
+    response = client.post(
+        f"/api/tasks/{task_id}/review", json=reject_payload, headers=headers_mgr
+    )
     assert response.status_code == status.HTTP_200_OK
     updated_task = response.json()
-    
+
     # Check that revision count is incremented and history contains the entry
     assert updated_task["revision_count"] == 1
     assert len(updated_task["revision_history"]) == 1
@@ -53,7 +53,7 @@ def test_rejection_history_flow(client, setup_mocks):
     assert entry["revision_number"] == 1
     assert entry["feedback"] == "Missing test coverage details."
     assert entry["rejected_by"] == "uid-mgr"
-    
+
     # 6. Fetch task history (as Manager)
     response = client.get(f"/api/tasks/{task_id}/history", headers=headers_mgr)
     assert response.status_code == status.HTTP_200_OK
@@ -62,14 +62,13 @@ def test_rejection_history_flow(client, setup_mocks):
     assert history["revision_count"] == 1
     assert len(history["revisions"]) == 1
     assert history["revisions"][0]["feedback"] == "Missing test coverage details."
-    
+
     # 7. Fetch task history (as Employee - should fail 403)
     response = client.get(f"/api/tasks/{task_id}/history", headers=headers_emp)
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 def test_deadlines_and_overdue(client, setup_mocks):
-    db = setup_mocks
     headers_mgr = {"Authorization": "Bearer manager-token"}
     headers_emp = {"Authorization": "Bearer employee-token"}
 
@@ -83,7 +82,7 @@ def test_deadlines_and_overdue(client, setup_mocks):
         "description": "Not overdue yet",
         "assigned_to": "uid-emp",
         "complexity": 1,
-        "deadline": future_deadline.isoformat()
+        "deadline": future_deadline.isoformat(),
     }
     res = client.post("/api/tasks", json=payload_future, headers=headers_mgr)
     assert res.status_code == status.HTTP_201_CREATED
@@ -97,7 +96,7 @@ def test_deadlines_and_overdue(client, setup_mocks):
         "description": "Already overdue",
         "assigned_to": "uid-emp",
         "complexity": 2,
-        "deadline": past_deadline.isoformat()
+        "deadline": past_deadline.isoformat(),
     }
     res = client.post("/api/tasks", json=payload_past, headers=headers_mgr)
     assert res.status_code == status.HTTP_201_CREATED
@@ -125,7 +124,6 @@ def test_deadlines_and_overdue(client, setup_mocks):
 
 
 def test_audit_trail(client, setup_mocks):
-    db = setup_mocks
     headers_mgr = {"Authorization": "Bearer manager-token"}
     headers_emp = {"Authorization": "Bearer employee-token"}
 
@@ -134,7 +132,7 @@ def test_audit_trail(client, setup_mocks):
         "title": "Audit Test Task",
         "description": "Verification of logging",
         "assigned_to": "uid-emp",
-        "complexity": 3
+        "complexity": 3,
     }
     res = client.post("/api/tasks", json=create_payload, headers=headers_mgr)
     assert res.status_code == status.HTTP_201_CREATED
@@ -148,28 +146,27 @@ def test_audit_trail(client, setup_mocks):
     client.post(f"/api/tasks/{task_id}/submit", headers=headers_emp)
 
     # 4. Reject the task (Manager)
-    reject_payload = {
-        "action": "reject",
-        "feedback": "Needs code cleanup."
-    }
-    client.post(f"/api/tasks/{task_id}/review", json=reject_payload, headers=headers_mgr)
+    reject_payload = {"action": "reject", "feedback": "Needs code cleanup."}
+    client.post(
+        f"/api/tasks/{task_id}/review", json=reject_payload, headers=headers_mgr
+    )
 
     # 5. Query task audit trail (Manager)
     res = client.get(f"/api/tasks/{task_id}/audit", headers=headers_mgr)
     assert res.status_code == status.HTTP_200_OK
     audit_trail = res.json()
-    
+
     assert len(audit_trail) == 4
     assert audit_trail[0]["action"] == "created"
     assert audit_trail[0]["new_stage"] == "todo"
-    
+
     assert audit_trail[1]["action"] == "started"
     assert audit_trail[1]["previous_stage"] == "todo"
     assert audit_trail[1]["new_stage"] == "in_progress"
-    
+
     assert audit_trail[2]["action"] == "submitted"
     assert audit_trail[2]["new_stage"] == "submitted_for_review"
-    
+
     assert audit_trail[3]["action"] == "rejected"
     assert audit_trail[3]["new_stage"] == "in_progress"
     assert audit_trail[3]["details"] == "Needs code cleanup."
@@ -195,26 +192,28 @@ def test_workload_dashboard(client, setup_mocks):
     from bson import ObjectId
 
     # 1. Register a second employee in mock DB list directly
-    db.data["users"].append({
-        "_id": ObjectId(),
-        "firebase_uid": "uid-emp2",
-        "email": "emp2@test.com",
-        "name": "Employee Two",
-        "role": "employee"
-    })
+    db.data["users"].append(
+        {
+            "_id": ObjectId(),
+            "firebase_uid": "uid-emp2",
+            "email": "emp2@test.com",
+            "name": "Employee Two",
+            "role": "employee",
+        }
+    )
 
     # 2. Create tasks assigned to Test Employee (uid-emp)
-    client.post("/api/tasks", json={
-        "title": "Task 1",
-        "assigned_to": "uid-emp",
-        "complexity": 2
-    }, headers=headers_mgr)
+    client.post(
+        "/api/tasks",
+        json={"title": "Task 1", "assigned_to": "uid-emp", "complexity": 2},
+        headers=headers_mgr,
+    )
 
-    res = client.post("/api/tasks", json={
-        "title": "Task 2",
-        "assigned_to": "uid-emp",
-        "complexity": 3
-    }, headers=headers_mgr)
+    res = client.post(
+        "/api/tasks",
+        json={"title": "Task 2", "assigned_to": "uid-emp", "complexity": 3},
+        headers=headers_mgr,
+    )
     task2_id = res.json()["id"]
 
     # Start Task 2 so it enters in_progress
@@ -254,11 +253,11 @@ def test_manager_completion_metrics(client, setup_mocks):
     headers_emp = {"Authorization": "Bearer employee-token"}
 
     # 1. Create task (Manager)
-    res = client.post("/api/tasks", json={
-        "title": "Task Metrics",
-        "assigned_to": "uid-emp",
-        "complexity": 2
-    }, headers=headers_mgr)
+    res = client.post(
+        "/api/tasks",
+        json={"title": "Task Metrics", "assigned_to": "uid-emp", "complexity": 2},
+        headers=headers_mgr,
+    )
     task_id = res.json()["id"]
 
     # 2. Complete task cycle: start -> submit -> confirm
@@ -267,23 +266,30 @@ def test_manager_completion_metrics(client, setup_mocks):
 
     # We want to test time metrics, so let's adjust created_at in the mock db to 2 hours ago
     from datetime import datetime, timedelta, timezone
+
     for t in db.data["tasks"]:
         if str(t["_id"]) == task_id:
             t["created_at"] = datetime.now(timezone.utc) - timedelta(hours=2)
 
     # Confirm it
-    client.post(f"/api/tasks/{task_id}/review", json={"action": "confirm"}, headers=headers_mgr)
+    client.post(
+        f"/api/tasks/{task_id}/review", json={"action": "confirm"}, headers=headers_mgr
+    )
 
     # 3. Create a second task that gets rejected once, then remains in_progress
-    res = client.post("/api/tasks", json={
-        "title": "Task Metrics 2",
-        "assigned_to": "uid-emp",
-        "complexity": 3
-    }, headers=headers_mgr)
+    res = client.post(
+        "/api/tasks",
+        json={"title": "Task Metrics 2", "assigned_to": "uid-emp", "complexity": 3},
+        headers=headers_mgr,
+    )
     task2_id = res.json()["id"]
     client.post(f"/api/tasks/{task2_id}/start", headers=headers_emp)
     client.post(f"/api/tasks/{task2_id}/submit", headers=headers_emp)
-    client.post(f"/api/tasks/{task2_id}/review", json={"action": "reject", "feedback": "Fix this"}, headers=headers_mgr)
+    client.post(
+        f"/api/tasks/{task2_id}/review",
+        json={"action": "reject", "feedback": "Fix this"},
+        headers=headers_mgr,
+    )
 
     # 4. Fetch metrics (Manager)
     res = client.get("/api/analytics/metrics", headers=headers_mgr)
@@ -314,6 +320,3 @@ def test_manager_completion_metrics(client, setup_mocks):
     # 5. Fetch metrics (Employee - should fail 403)
     res = client.get("/api/analytics/metrics", headers=headers_emp)
     assert res.status_code == status.HTTP_403_FORBIDDEN
-
-
-
