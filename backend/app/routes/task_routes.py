@@ -18,25 +18,27 @@ The core PR-review-merge flow:
   Manager calls POST /api/tasks/{id}/review with action=reject → stage becomes 'in_progress'
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from bson import ObjectId
 from datetime import datetime, timezone
+
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.core.database import get_database
 from app.middleware.role_guard import require_role
 from app.models.task import (
     TaskCreate,
-    TaskUpdate,
     TaskResponse,
     TaskReviewAction,
+    TaskUpdate,
 )
-from app.utils.status_machine import validate_transition
-from app.core.database import get_database
 from app.utils.audit_logger import log_audit
+from app.utils.status_machine import validate_transition
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
 
 
-def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
+def task_doc_to_response(doc: dict, users_cache: dict | None = None) -> TaskResponse:
     """Convert a MongoDB task document to a TaskResponse schema."""
     assigned_to_name = None
     if users_cache and doc.get("assigned_to") in users_cache:
@@ -45,7 +47,7 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
     deadline = doc.get("deadline")
     is_overdue = False
     if deadline and doc.get("stage") != "done":
-        now = datetime.now(timezone.utc) if deadline.tzinfo else datetime.now()
+        now = datetime.now(timezone.utc) if deadline.tzinfo else datetime.now()  # noqa: DTZ005
         is_overdue = deadline < now
 
     return TaskResponse(
@@ -68,6 +70,13 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
         updated_at=doc["updated_at"],
     )
 
+
+async def resolve_task_response(db, doc: dict) -> TaskResponse:
+    """Helper to convert task doc to response with resolved assignee name."""
+    assigned_user = await db.users.find_one({"firebase_uid": doc.get("assigned_to")})
+    name = assigned_user.get("name") if assigned_user else None
+    cache = {doc.get("assigned_to"): name} if name else None
+    return task_doc_to_response(doc, cache)
 
 
 
@@ -207,7 +216,7 @@ async def update_task(
     )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
-    return task_doc_to_response(updated)
+    return await resolve_task_response(db, updated)
 
 
 
@@ -296,7 +305,7 @@ async def submit_for_review(
     )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
-    return task_doc_to_response(updated)
+    return await resolve_task_response(db, updated)
 
 
 
@@ -348,7 +357,7 @@ async def start_task(
     )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
-    return task_doc_to_response(updated)
+    return await resolve_task_response(db, updated)
 
 
 
@@ -462,60 +471,4 @@ async def review_task(
         )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
-    return task_doc_to_response(updated)
-
-
-# ─── OVERDUE TASKS (Manager only) ─────────────────────────────
-
-@router.get("/tasks/overdue", response_model=list[TaskResponse])
-async def get_overdue_tasks(
-    current_user: dict = Depends(require_role("manager")),
-):
-    """
-    Get all overdue tasks (Manager only).
-    """
-    db = get_database()
-    now = datetime.now(timezone.utc)
-
-    # Query non-done tasks with deadlines in the past
-    query = {
-        "stage": {"$ne": "done"},
-        "deadline": {"$ne": None, "$lt": now}
-    }
-
-    # Build a user name cache for assigned_to_name
-    users_cache = {}
-    async for user in db.users.find({"role": "employee"}):
-        users_cache[user["firebase_uid"]] = user["name"]
-
-    cursor = db.tasks.find(query).sort("deadline", 1)
-    tasks = []
-    async for doc in cursor:
-        tasks.append(task_doc_to_response(doc, users_cache))
-    return tasks
-
-
-# ─── TASK HISTORY (Manager only) ──────────────────────────────
-
-@router.get("/tasks/{task_id}/history")
-async def get_task_history(
-    task_id: str,
-    current_user: dict = Depends(require_role("manager")),
-):
-    """
-    Get the revision history for a task (Manager only).
-    """
-    db = get_database()
-
-    if not ObjectId.is_valid(task_id):
-        raise HTTPException(status_code=400, detail="Invalid task ID format.")
-
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found.")
-
-    return {
-        "task_id": task_id,
-        "revision_count": task.get("revision_count", 0),
-        "revisions": task.get("revision_history", []),
-    }
+    return await resolve_task_response(db, updated)

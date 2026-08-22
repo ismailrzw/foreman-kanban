@@ -27,7 +27,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGO_URI=mongodb://mongo:27017/foreman_db
+      - MONGO_URI=${MONGO_URI:-mongodb+srv://foreman-admin:11223344@foreman-cluster.nrijqsu.mongodb.net/foreman_db?retryWrites=true&w=majority&appName=foreman-cluster}
       - FIREBASE_SERVICE_ACCOUNT_PATH=/app/serviceAccountKey.json
       - FRONTEND_URL=http://localhost
     volumes:

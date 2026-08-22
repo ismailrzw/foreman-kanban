@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 320" width="100%" height="100%" style="background:#15130F; font-family: 'Inter', system-ui, sans-serif;">
+  <!-- Header -->
+  <text x="425" y="40" fill="#E8A23D" font-size="18" font-weight="700" text-anchor="middle" letter-spacing="1">TASK STATUS MACHINE — PR REVIEW &amp; MERGE METAPHOR</text>
+
+  <!-- Step 1: TODO -->
+  <rect x="40" y="90" width="160" height="140" rx="8" fill="#1E1B16" stroke="#332D24" stroke-width="2"/>
+  <rect x="40" y="90" width="160" height="34" rx="8" fill="#2A241C"/>
+  <text x="120" y="112" fill="#FAF6EC" font-size="13" font-weight="700" text-anchor="middle">1. TO DO</text>
+  <text x="120" y="150" fill="#A09585" font-size="11" text-anchor="middle">Manager opens</text>
+  <text x="120" y="168" fill="#A09585" font-size="11" text-anchor="middle">work order &amp;</text>
+  <text x="120" y="186" fill="#A09585" font-size="11" text-anchor="middle">assigns crew</text>
+
+  <!-- Arrow 1 -->
+  <path d="M 200 160 L 240 160" stroke="#E8A23D" stroke-width="2" />
+  <polygon points="235,155 245,160 235,165" fill="#E8A23D" />
+  <text x="220" y="148" fill="#E8A23D" font-size="9" text-anchor="middle" font-weight="600">Employee Starts</text>
+
+  <!-- Step 2: IN PROGRESS -->
+  <rect x="245" y="90" width="160" height="140" rx="8" fill="#1E1B16" stroke="#332D24" stroke-width="2"/>
+  <rect x="245" y="90" width="160" height="34" rx="8" fill="#2A241C"/>
+  <text x="325" y="112" fill="#3B82F6" font-size="13" font-weight="700" text-anchor="middle">2. IN PROGRESS</text>
+  <text x="325" y="150" fill="#A09585" font-size="11" text-anchor="middle">Employee performs</text>
+  <text x="325" y="168" fill="#A09585" font-size="11" text-anchor="middle">job / updates task.</text>
+  <text x="325" y="186" fill="#A09585" font-size="11" text-anchor="middle">May include rework</text>
+
+  <!-- Arrow 2 -->
+  <path d="M 405 160 L 445 160" stroke="#3B82F6" stroke-width="2" />
+  <polygon points="440,155 450,160 440,165" fill="#3B82F6" />
+  <text x="425" y="148" fill="#3B82F6" font-size="9" text-anchor="middle" font-weight="600">Submits Work</text>
+
+  <!-- Step 3: FOR INSPECTION -->
+  <rect x="450" y="90" width="160" height="140" rx="8" fill="#1E1B16" stroke="#E8A23D" stroke-width="2"/>
+  <rect x="450" y="90" width="160" height="34" rx="8" fill="#E8A23D"/>
+  <text x="530" y="112" fill="#15130F" font-size="13" font-weight="700" text-anchor="middle">3. FOR INSPECTION</text>
+  <text x="530" y="150" fill="#A09585" font-size="11" text-anchor="middle">Manager Inspection</text>
+  <text x="530" y="168" fill="#A09585" font-size="11" text-anchor="middle">Queue (PR Inbox)</text>
+  <text x="530" y="186" fill="#A09585" font-size="11" text-anchor="middle">Awaiting sign-off</text>
+
+  <!-- Arrow 3 (Approve -> Done) -->
+  <path d="M 610 140 L 650 140" stroke="#4CAF50" stroke-width="2" />
+  <polygon points="645,135 655,140 645,145" fill="#4CAF50" />
+  <text x="630" y="130" fill="#4CAF50" font-size="9" text-anchor="middle" font-weight="700">Confirm (Merge)</text>
+
+  <!-- Step 4: SIGNED OFF -->
+  <rect x="655" y="90" width="155" height="140" rx="8" fill="#1E1B16" stroke="#4CAF50" stroke-width="2"/>
+  <rect x="655" y="90" width="155" height="34" rx="8" fill="#1B3A1E"/>
+  <text x="732" y="112" fill="#4CAF50" font-size="13" font-weight="700" text-anchor="middle">4. SIGNED OFF ✓</text>
+  <text x="732" y="150" fill="#A09585" font-size="11" text-anchor="middle">Terminal state.</text>
+  <text x="732" y="168" fill="#A09585" font-size="11" text-anchor="middle">Stamped Approved.</text>
+  <text x="732" y="186" fill="#A09585" font-size="11" text-anchor="middle">Task Completed.</text>
+
+  <!-- Rejection Loop Arrow (Send back to In Progress) -->
+  <path d="M 530 230 C 530 280, 325 280, 325 230" fill="none" stroke="#EF4444" stroke-width="2" stroke-dasharray="4"/>
+  <polygon points="320,235 325,225 330,235" fill="#EF4444" />
+  <text x="425" y="272" fill="#EF4444" font-size="10" text-anchor="middle" font-weight="700">Reject (Request Changes) — Manager includes required feedback</text>
+</svg>

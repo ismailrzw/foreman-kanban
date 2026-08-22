@@ -24,7 +24,10 @@ from typing import Literal
 ALLOWED_TRANSITIONS = {
     "todo": {"in_progress"},
     "in_progress": {"submitted_for_review"},
-    "submitted_for_review": {"done", "in_progress"},  # done = confirm, in_progress = reject
+    "submitted_for_review": {
+        "done",
+        "in_progress",
+    },  # done = confirm, in_progress = reject
     "done": set(),  # Terminal state — no transitions out
 }
 
@@ -33,8 +36,8 @@ ALLOWED_TRANSITIONS = {
 TRANSITION_ROLES = {
     ("todo", "in_progress"): "employee",
     ("in_progress", "submitted_for_review"): "employee",
-    ("submitted_for_review", "done"): "manager",          # Only manager can confirm
-    ("submitted_for_review", "in_progress"): "manager",   # Only manager can reject
+    ("submitted_for_review", "done"): "manager",  # Only manager can confirm
+    ("submitted_for_review", "in_progress"): "manager",  # Only manager can reject
 }
 
 
@@ -61,8 +64,10 @@ def validate_transition(
     if new_stage not in allowed:
         return (
             False,
-            f"Cannot move task from '{current_stage}' to '{new_stage}'. "
-            f"Allowed transitions from '{current_stage}': {allowed or 'none (terminal state)'}.",
+            (
+                f"Cannot move task from '{current_stage}' to '{new_stage}'. "
+                f"Allowed transitions from '{current_stage}': {allowed or 'none (terminal state)'}."
+            ),
         )
 
     # Check if the user's role is authorized for this transition
@@ -70,8 +75,10 @@ def validate_transition(
     if required_role and required_role != user_role:
         return (
             False,
-            f"Only a {required_role} can move a task from '{current_stage}' to '{new_stage}'. "
-            f"You are logged in as a {user_role}.",
+            (
+                f"Only a {required_role} can move a task from '{current_stage}' to '{new_stage}'. "
+                f"You are logged in as a {user_role}."
+            ),
         )
 
     return (True, "")

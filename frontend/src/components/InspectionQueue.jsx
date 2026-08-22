@@ -5,8 +5,9 @@
  * revision history integration, and batch sign-off ("Confirm All").
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
+import RejectPanel from './RejectPanel';
 
 function ComplexityDots({ level }) {
   return (
@@ -20,36 +21,19 @@ function ComplexityDots({ level }) {
 
 export default function InspectionQueue({ tasks, onConfirm, onReject }) {
   const [openRejectId, setOpenRejectId] = useState(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [employees, setEmployees] = useState([]);
-  
-  // Filter states
-  const [filterEmployee, setFilterEmployee] = useState('all');
-  const [filterComplexity, setFilterComplexity] = useState('all');
-  
-  // Expansion states
   const [expandedTaskId, setExpandedTaskId] = useState(null);
-  const [revisions, setRevisions] = useState({}); // { taskId: Array of revisions }
+  const [revisions, setRevisions] = useState({});
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [confirmingAll, setConfirmingAll] = useState(false);
+  const [filterEmployee, setFilterEmployee] = useState('all');
+  const [filterComplexity, setFilterComplexity] = useState('all');
+  const [employees, setEmployees] = useState([]);
 
-  // Fetch employees list for filtering
   useEffect(() => {
     api.get('/api/users/employees')
-      .then((res) => {
-        setEmployees(res.data);
-      })
-      .catch((err) => {
-        console.error('Failed to fetch employees for review queue filters:', err);
-      });
+      .then(res => setEmployees(res.data))
+      .catch(err => console.error('Failed to fetch employees for queue filter', err));
   }, []);
-
-  function handleReject(taskId) {
-    const feedback = rejectReason.trim() || 'Needs another pass before it can be signed off.';
-    onReject(taskId, feedback);
-    setOpenRejectId(null);
-    setRejectReason('');
-  }
 
   // Toggle detail expansion and fetch revision history
   const handleToggleExpand = async (taskId) => {
@@ -157,103 +141,43 @@ export default function InspectionQueue({ tasks, onConfirm, onReject }) {
               : 'No tasks match the active filters.'}
           </div>
         ) : (
-          filteredTasks.map((task) => {
-            const isExpanded = expandedTaskId === task.id;
-            return (
-              <div className={`queue-item ${isExpanded ? 'is-expanded' : ''}`} key={task.id}>
-                <div className="qi-main" onClick={() => handleToggleExpand(task.id)}>
-                  <div className="qi-expansion-indicator">{isExpanded ? '▼' : '▶'}</div>
-                  <div className="qi-info">
-                    <div className="qi-title">{task.title}</div>
-                    <div className="qi-sub">
-                      {task.id?.slice(-8)} · Submitted by {task.assigned_to_name || 'Unknown'} ·{' '}
-                      Complexity <ComplexityDots level={task.complexity} />
-                    </div>
-                  </div>
+          tasks.map((task) => (
+            <div className="queue-item" key={task.id}>
+              <div className="qi-main">
+                <div className="qi-title">{task.title}</div>
+                <div className="qi-sub">
+                  {task.id?.slice(-8)} · Submitted by {task.assigned_to_name || 'Unknown'} ·{' '}
+                  Complexity <ComplexityDots level={task.complexity} />
                 </div>
-                
-                <div className="queue-actions">
-                  <button
-                    className="btn btn-sm btn-stamp-approve"
-                    onClick={() => onConfirm(task.id)}
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    className="btn btn-sm btn-stamp-reject"
-                    onClick={() =>
-                      setOpenRejectId(openRejectId === task.id ? null : task.id)
-                    }
-                  >
-                    Send Back
-                  </button>
-                </div>
-
-                {/* Collapsible details panel */}
-                {isExpanded && (
-                  <div className="queue-detail-panel">
-                    <div className="qd-section">
-                      <h5>Work Order Description</h5>
-                      <p className="qd-desc">{task.description || 'No description provided.'}</p>
-                    </div>
-
-                    <div className="qd-section">
-                      <h5>Revision Log & Inspection Notes</h5>
-                      {loadingHistory && !revisions[task.id] ? (
-                        <div className="qd-loading">Loading history...</div>
-                      ) : (!revisions[task.id] || revisions[task.id].length === 0) ? (
-                        <div className="qd-empty-history">No past rejections on this work order.</div>
-                      ) : (
-                        <div className="revisions-timeline">
-                          {revisions[task.id].map((rev, index) => (
-                            <div key={index} className="revision-log-item">
-                              <div className="rev-meta">
-                                <span className="rev-num">Revision #{rev.revision_number || index + 1}</span>
-                                <span className="rev-date">
-                                  {rev.rejected_at ? new Date(rev.rejected_at).toLocaleString() : 'N/A'}
-                                </span>
-                              </div>
-                              <p className="rev-feedback">"{rev.feedback}"</p>
-                              <div className="rev-author">
-                                <small>Rejected by: {rev.rejected_by || 'Manager'}</small>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {openRejectId === task.id && (
-                  <div className="reject-panel">
-                    <textarea
-                      placeholder="What needs to be fixed before this can be signed off?"
-                      value={rejectReason}
-                      onChange={(e) => setRejectReason(e.target.value)}
-                    />
-                    <div className="reject-actions">
-                      <button
-                        className="btn btn-sm btn-stamp-reject"
-                        onClick={() => handleReject(task.id)}
-                      >
-                        Confirm rejection
-                      </button>
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        onClick={() => {
-                          setOpenRejectId(null);
-                          setRejectReason('');
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
-            );
-          })
+              <div className="queue-actions">
+                <button
+                  className="btn btn-sm btn-stamp-approve"
+                  onClick={() => onConfirm(task.id)}
+                >
+                  Confirm
+                </button>
+                <button
+                  className="btn btn-sm btn-stamp-reject"
+                  onClick={() =>
+                    setOpenRejectId(openRejectId === task.id ? null : task.id)
+                  }
+                >
+                  Send Back
+                </button>
+              </div>
+              {openRejectId === task.id && (
+                <RejectPanel
+                  taskId={task.id}
+                  onReject={(taskId, feedback) => {
+                    onReject(taskId, feedback);
+                    setOpenRejectId(null);
+                  }}
+                  onCancel={() => setOpenRejectId(null)}
+                />
+              )}
+            </div>
+          ))
         )}
       </div>
     </div>

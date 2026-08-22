@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="100%" height="100%" style="background:#15130F; font-family: 'Inter', system-ui, sans-serif;">
+  <!-- Container Overlay -->
+  <rect x="60" y="40" width="840" height="460" rx="12" fill="#1C1914" stroke="#2D271F" stroke-width="2" />
+
+  <!-- Left Side Branding -->
+  <g transform="translate(90, 80)">
+    <circle cx="12" cy="12" r="6" fill="#E8A23D"/>
+    <text x="26" y="17" fill="#F4EFE6" font-family="'Oswald', sans-serif" font-size="20" font-weight="700" letter-spacing="1">FOREMAN</text>
+    
+    <text x="0" y="80" fill="#F4EFE6" font-family="'Oswald', sans-serif" font-size="32" font-weight="700" line-height="1.2">
+      <tspan x="0" dy="0">Assign the work.</tspan>
+      <tspan x="0" dy="40">Inspect what's done.</tspan>
+    </text>
+
+    <text x="0" y="170" fill="#A09585" font-size="13" width="340">
+      <tspan x="0" dy="0">A job board for teams who need real sign-off</tspan>
+      <tspan x="0" dy="20">before work counts as finished — not just a checkbox.</tspan>
+    </text>
+
+    <!-- Ledger rules -->
+    <g transform="translate(0, 220)">
+      <rect x="0" y="0" width="320" height="44" rx="6" fill="#241F18" stroke="#332D24"/>
+      <text x="12" y="26" fill="#E8A23D" font-weight="700" font-size="13">01</text>
+      <text x="36" y="26" fill="#D4CEC3" font-size="11">Manager opens a work order &amp; assigns crew.</text>
+
+      <rect x="0" y="52" width="320" height="44" rx="6" fill="#241F18" stroke="#332D24"/>
+      <text x="12" y="78" fill="#E8A23D" font-weight="700" font-size="13">02</text>
+      <text x="36" y="78" fill="#D4CEC3" font-size="11">Employee does job, submits for inspection.</text>
+
+      <rect x="0" y="104" width="320" height="44" rx="6" fill="#241F18" stroke="#332D24"/>
+      <text x="12" y="130" fill="#E8A23D" font-weight="700" font-size="13">03</text>
+      <text x="36" y="130" fill="#D4CEC3" font-size="11">Manager confirms or sends back with feedback.</text>
+    </g>
+  </g>
+
+  <!-- Vertical Divider -->
+  <line x1="470" y1="60" x2="470" y2="480" stroke="#2D271F" stroke-width="1.5"/>
+
+  <!-- Right Side Auth Form -->
+  <g transform="translate(510, 80)">
+    <!-- Auth Tabs -->
+    <rect x="0" y="0" width="340" height="40" rx="6" fill="#14120E" stroke="#2D271F"/>
+    <rect x="4" y="4" width="162" height="32" rx="4" fill="#E8A23D"/>
+    <text x="85" y="25" fill="#15130F" font-weight="700" font-size="13" text-anchor="middle">Clock In</text>
+    <text x="255" y="25" fill="#A09585" font-weight="600" font-size="13" text-anchor="middle">New Hire</text>
+
+    <!-- Email Field -->
+    <text x="0" y="70" fill="#A09585" font-size="12" font-weight="600">Work email</text>
+    <rect x="0" y="80" width="340" height="40" rx="6" fill="#14120E" stroke="#332D24"/>
+    <text x="14" y="105" fill="#F4EFE6" font-size="13">manager@foreman.dev</text>
+
+    <!-- Password Field -->
+    <text x="0" y="145" fill="#A09585" font-size="12" font-weight="600">Password</text>
+    <rect x="0" y="155" width="340" height="40" rx="6" fill="#14120E" stroke="#332D24"/>
+    <text x="14" y="180" fill="#F4EFE6" font-size="13">• • • • • • • • • •</text>
+
+    <!-- Role Pick -->
+    <text x="0" y="220" fill="#A09585" font-size="12" font-weight="600">Role selection</text>
+    <rect x="0" y="230" width="162" height="60" rx="6" fill="#2A241C" stroke="#E8A23D" stroke-width="1.5"/>
+    <text x="12" y="252" fill="#E8A23D" font-weight="700" font-size="13">Manager</text>
+    <text x="12" y="272" fill="#A09585" font-size="10">Assigns &amp; inspects</text>
+
+    <rect x="178" y="230" width="162" height="60" rx="6" fill="#14120E" stroke="#2D271F"/>
+    <text x="190" y="252" fill="#F4EFE6" font-weight="700" font-size="13">Employee</text>
+    <text x="190" y="272" fill="#A09585" font-size="10">Submits work</text>
+
+    <!-- Submit Button -->
+    <rect x="0" y="315" width="340" height="44" rx="6" fill="#E8A23D"/>
+    <text x="170" y="342" fill="#15130F" font-weight="700" font-size="14" text-anchor="middle">Clock In</text>
+
+    <text x="170" y="385" fill="#756B5D" font-size="11" text-anchor="middle">Role-Based Kanban &amp; PR Workflow Simulator</text>
+  </g>
+</svg>

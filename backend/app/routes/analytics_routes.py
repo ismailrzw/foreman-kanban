@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends
-from app.middleware.role_guard import require_role
+
 from app.core.database import get_database
+from app.middleware.role_guard import require_role
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
 
 @router.get("/workload")
 async def get_workload_dashboard(
@@ -40,16 +42,18 @@ async def get_workload_dashboard(
             stage_tasks = [t for t in emp_tasks if t["stage"] == stage]
             by_stage[stage] = {
                 "count": len(stage_tasks),
-                "weight": sum(t["complexity"] for t in stage_tasks)
+                "weight": sum(t["complexity"] for t in stage_tasks),
             }
 
-        results.append({
-            "firebase_uid": emp_uid,
-            "name": emp["name"],
-            "total_tasks": total_tasks,
-            "weighted_load": weighted_load,
-            "by_stage": by_stage
-        })
+        results.append(
+            {
+                "firebase_uid": emp_uid,
+                "name": emp["name"],
+                "total_tasks": total_tasks,
+                "weighted_load": weighted_load,
+                "by_stage": by_stage,
+            }
+        )
 
     return {"employees": results}
 
@@ -88,18 +92,22 @@ async def get_completion_metrics(
             delta = completed_at - created_at
             hours = delta.total_seconds() / 3600.0
             completion_times.append(hours)
-    avg_completion_time_hours = sum(completion_times) / len(completion_times) if completion_times else 0.0
+    avg_completion_time_hours = (
+        sum(completion_times) / len(completion_times) if completion_times else 0.0
+    )
 
     # Rejection rate: count of tasks with at least one rejection / total_tasks
     rejected_tasks_count = len([t for t in tasks if t.get("revision_count", 0) > 0])
-    overall_rejection_rate = rejected_tasks_count / total_tasks if total_tasks > 0 else 0.0
+    overall_rejection_rate = (
+        rejected_tasks_count / total_tasks if total_tasks > 0 else 0.0
+    )
 
     overall = {
         "total_tasks": total_tasks,
         "completed": completed_count,
         "completion_rate": completion_rate,
         "avg_completion_time_hours": avg_completion_time_hours,
-        "rejection_rate": overall_rejection_rate
+        "rejection_rate": overall_rejection_rate,
     }
 
     per_employee = []
@@ -120,9 +128,15 @@ async def get_completion_metrics(
                 delta = completed_at - created_at
                 hours = delta.total_seconds() / 3600.0
                 emp_completion_times.append(hours)
-        emp_avg_completion_time_hours = sum(emp_completion_times) / len(emp_completion_times) if emp_completion_times else 0.0
+        emp_avg_completion_time_hours = (
+            sum(emp_completion_times) / len(emp_completion_times)
+            if emp_completion_times
+            else 0.0
+        )
 
-        emp_rejected_count = len([t for t in emp_tasks if t.get("revision_count", 0) > 0])
+        emp_rejected_count = len(
+            [t for t in emp_tasks if t.get("revision_count", 0) > 0]
+        )
         emp_rejection_rate = emp_rejected_count / emp_total if emp_total > 0 else 0.0
 
         # Complexity distribution
@@ -132,18 +146,16 @@ async def get_completion_metrics(
             if comp_key in comp_dist:
                 comp_dist[comp_key] += 1
 
-        per_employee.append({
-            "name": emp["name"],
-            "total": emp_total,
-            "completed": emp_completed_count,
-            "completion_rate": emp_completion_rate,
-            "avg_completion_time_hours": emp_avg_completion_time_hours,
-            "rejection_rate": emp_rejection_rate,
-            "complexity_distribution": comp_dist
-        })
+        per_employee.append(
+            {
+                "name": emp["name"],
+                "total": emp_total,
+                "completed": emp_completed_count,
+                "completion_rate": emp_completion_rate,
+                "avg_completion_time_hours": emp_avg_completion_time_hours,
+                "rejection_rate": emp_rejection_rate,
+                "complexity_distribution": comp_dist,
+            }
+        )
 
-    return {
-        "overall": overall,
-        "per_employee": per_employee
-    }
-
+    return {"overall": overall, "per_employee": per_employee}

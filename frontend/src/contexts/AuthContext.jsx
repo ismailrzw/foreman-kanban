@@ -55,22 +55,45 @@ export function AuthProvider({ children }) {
 
   // Sign up: create Firebase account → send verification email → register in backend
   async function signup(email, password, name, role) {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-
-    // Send verification email
-    await sendEmailVerification(user);
+    let user;
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      user = userCredential.user;
+      try {
+        await sendEmailVerification(user);
+      } catch (e) {
+        console.warn('Verification email not sent:', e);
+      }
+    } catch (err) {
+      if (err.code === 'auth/email-already-in-use') {
+        // Account exists in Firebase — sign in to sync missing MongoDB profile
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        user = userCredential.user;
+      } else {
+        throw err;
+      }
+    }
 
     // Register in our backend (creates MongoDB user doc with role)
     await user.getIdToken();
-    const res = await api.post('/api/register', {
-      firebase_uid: user.uid,
-      email: email,
-      name: name,
-      role: role,
-    });
+    try {
+      const res = await api.post('/api/register', {
+        firebase_uid: user.uid,
+        email: email,
+        name: name,
+        role: role,
+      });
+      setUserProfile(res.data);
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        // Already registered in MongoDB — fetch current profile
+        const res = await api.get('/api/me');
+        setUserProfile(res.data);
+      } else {
+        throw err;
+      }
+    }
 
-    setUserProfile(res.data);
     return user;
   }
 
@@ -79,9 +102,29 @@ export function AuthProvider({ children }) {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    const res = await api.get('/api/me');
+    try {
+      const res = await api.get('/api/me');
+      setUserProfile(res.data);
+      return user;
+    } catch (err) {
+      if (err?.response?.status === 404) {
+        throw new Error("Account exists in Firebase, but your profile was missing in the database. Switch to 'New Hire', enter your name & role, and click 'Create Account' to sync your profile.");
+      }
+      throw err;
+    }
+  }
+
+  // Complete registration for users logged into Firebase but missing MongoDB profile
+  async function completeRegistration(name, role) {
+    if (!currentUser) throw new Error('Not logged into Firebase.');
+    const res = await api.post('/api/register', {
+      firebase_uid: currentUser.uid,
+      email: currentUser.email,
+      name: name,
+      role: role,
+    });
     setUserProfile(res.data);
-    return user;
+    return res.data;
   }
 
   // Logout
@@ -96,6 +139,7 @@ export function AuthProvider({ children }) {
     loading,
     signup,
     login,
+    completeRegistration,
     logout,
   };
 

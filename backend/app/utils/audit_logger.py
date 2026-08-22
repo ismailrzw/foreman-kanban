@@ -1,14 +1,16 @@
 from datetime import datetime, timezone
+
 from app.core.database import get_database
 from app.models.audit import AuditLogEntry
+
 
 async def log_audit(
     task_id: str,
     action: str,
     user: dict,
-    previous_stage: str = None,
-    new_stage: str = None,
-    details: str = None
+    previous_stage: str | None = None,
+    new_stage: str | None = None,
+    details: str | None = None
 ):
     """
     Inserts a new AuditLogEntry document into the database audit_logs collection.

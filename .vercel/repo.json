@@ -1,0 +1,11 @@
+{
+  "remoteName": "origin",
+  "projects": [
+    {
+      "id": "prj_usHdRIcKbjrA6CXnxGbCQaKh99ky",
+      "name": "foreman-kanban",
+      "directory": "frontend",
+      "orgId": "team_H0rsu5GmpdUDHe7dXAIHH9tg"
+    }
+  ]
+}
