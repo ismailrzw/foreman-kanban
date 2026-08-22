@@ -544,7 +544,10 @@ from typing import Literal
 
 class UserCreate(BaseModel):
     """Schema for user registration request body."""
-    firebase_uid: str = Field(..., description="Firebase Auth UID from the decoded token")
+
+    firebase_uid: str = Field(
+        ..., description="Firebase Auth UID from the decoded token"
+    )
     email: str = Field(..., description="User's email address")
     name: str = Field(..., min_length=2, description="Display name")
     role: Literal["manager", "employee"] = Field(..., description="Application role")
@@ -552,6 +555,7 @@ class UserCreate(BaseModel):
 
 class UserResponse(BaseModel):
     """Schema for user data returned by the API."""
+
     firebase_uid: str
     email: str
     name: str
@@ -560,6 +564,7 @@ class UserResponse(BaseModel):
 
 class UserInDB(BaseModel):
     """Internal representation stored in MongoDB."""
+
     firebase_uid: str
     email: str
     name: str
@@ -589,14 +594,18 @@ ComplexityType = Literal[1, 2, 3]
 
 class TaskCreate(BaseModel):
     """Schema for creating a new task (Manager only)."""
+
     title: str = Field(..., min_length=1, max_length=200, description="Task title")
-    description: str = Field(default="", max_length=1000, description="Task description")
+    description: str = Field(
+        default="", max_length=1000, description="Task description"
+    )
     assigned_to: str = Field(..., description="Firebase UID of the assigned employee")
     complexity: ComplexityType = Field(default=2, description="1=Low, 2=Medium, 3=High")
 
 
 class TaskUpdate(BaseModel):
     """Schema for updating a task (Manager only)."""
+
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=1000)
     assigned_to: Optional[str] = None
@@ -606,19 +615,24 @@ class TaskUpdate(BaseModel):
 
 class TaskSubmitForReview(BaseModel):
     """Schema for employee submitting task for review (empty body — action-based)."""
+
     pass
 
 
 class TaskReviewAction(BaseModel):
     """Schema for manager confirming or rejecting a submission."""
+
     action: Literal["confirm", "reject"] = Field(..., description="confirm or reject")
     feedback: Optional[str] = Field(
-        None, max_length=500, description="Required when rejecting — reason for rejection"
+        None,
+        max_length=500,
+        description="Required when rejecting — reason for rejection",
     )
 
 
 class TaskResponse(BaseModel):
     """Schema for task data returned by the API."""
+
     id: str = Field(..., description="MongoDB document _id as string")
     title: str
     description: str
@@ -668,7 +682,10 @@ from typing import Literal
 ALLOWED_TRANSITIONS = {
     "todo": {"in_progress"},
     "in_progress": {"submitted_for_review"},
-    "submitted_for_review": {"done", "in_progress"},  # done = confirm, in_progress = reject
+    "submitted_for_review": {
+        "done",
+        "in_progress",
+    },  # done = confirm, in_progress = reject
     "done": set(),  # Terminal state — no transitions out
 }
 
@@ -677,8 +694,8 @@ ALLOWED_TRANSITIONS = {
 TRANSITION_ROLES = {
     ("todo", "in_progress"): "employee",
     ("in_progress", "submitted_for_review"): "employee",
-    ("submitted_for_review", "done"): "manager",          # Only manager can confirm
-    ("submitted_for_review", "in_progress"): "manager",   # Only manager can reject
+    ("submitted_for_review", "done"): "manager",  # Only manager can confirm
+    ("submitted_for_review", "in_progress"): "manager",  # Only manager can reject
 }
 
 
@@ -789,7 +806,7 @@ def require_role(required_role: str = None):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access denied. This endpoint requires the '{required_role}' role. "
-                       f"Your role is '{user.get('role')}'.",
+                f"Your role is '{user.get('role')}'.",
             )
 
         # Convert ObjectId to string for downstream use
@@ -825,7 +842,9 @@ from app.main import get_database
 router = APIRouter(prefix="/api", tags=["auth"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
+)
 async def register_user(
     user_data: UserCreate,
     decoded_token: dict = Depends(verify_firebase_token),
@@ -975,6 +994,7 @@ def task_doc_to_response(doc: dict, users_cache: dict = None) -> TaskResponse:
 
 # ─── LIST TASKS ──────────────────────────────────────────────
 
+
 @router.get("/tasks", response_model=list[TaskResponse])
 async def list_tasks(
     current_user: dict = Depends(require_role()),  # Any authenticated user
@@ -1007,6 +1027,7 @@ async def list_tasks(
 
 # ─── CREATE TASK (Manager only) ─────────────────────────────
 
+
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     task_data: TaskCreate,
@@ -1019,10 +1040,12 @@ async def create_task(
     db = get_database()
 
     # Verify the assigned employee exists
-    employee = await db.users.find_one({
-        "firebase_uid": task_data.assigned_to,
-        "role": "employee",
-    })
+    employee = await db.users.find_one(
+        {
+            "firebase_uid": task_data.assigned_to,
+            "role": "employee",
+        }
+    )
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1053,6 +1076,7 @@ async def create_task(
 
 # ─── UPDATE TASK (Manager only) ─────────────────────────────
 
+
 @router.put("/tasks/{task_id}", response_model=TaskResponse)
 async def update_task(
     task_id: str,
@@ -1073,9 +1097,7 @@ async def update_task(
         raise HTTPException(status_code=404, detail="Task not found.")
 
     # Build update dict (only non-None fields)
-    update_fields = {
-        k: v for k, v in task_data.model_dump().items() if v is not None
-    }
+    update_fields = {k: v for k, v in task_data.model_dump().items() if v is not None}
 
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update.")
@@ -1100,6 +1122,7 @@ async def update_task(
 
 # ─── DELETE TASK (Manager only) ──────────────────────────────
 
+
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
     task_id: str,
@@ -1117,6 +1140,7 @@ async def delete_task(
 
 
 # ─── SUBMIT FOR REVIEW (Employee only) ──────────────────────
+
 
 @router.post("/tasks/{task_id}/submit", response_model=TaskResponse)
 async def submit_for_review(
@@ -1158,12 +1182,14 @@ async def submit_for_review(
     now = datetime.now(timezone.utc)
     await db.tasks.update_one(
         {"_id": ObjectId(task_id)},
-        {"$set": {
-            "stage": "submitted_for_review",
-            "is_rejected": False,
-            "rejection_feedback": None,
-            "updated_at": now,
-        }},
+        {
+            "$set": {
+                "stage": "submitted_for_review",
+                "is_rejected": False,
+                "rejection_feedback": None,
+                "updated_at": now,
+            }
+        },
     )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
@@ -1171,6 +1197,7 @@ async def submit_for_review(
 
 
 # ─── START TASK (Employee only) ──────────────────────────────
+
 
 @router.post("/tasks/{task_id}/start", response_model=TaskResponse)
 async def start_task(
@@ -1216,6 +1243,7 @@ async def start_task(
 
 # ─── REVIEW TASK (Manager only) ─────────────────────────────
 
+
 @router.post("/tasks/{task_id}/review", response_model=TaskResponse)
 async def review_task(
     task_id: str,
@@ -1243,7 +1271,7 @@ async def review_task(
         raise HTTPException(
             status_code=400,
             detail=f"Cannot review a task in '{task['stage']}' stage. "
-                   f"Task must be in 'submitted_for_review' stage.",
+            f"Task must be in 'submitted_for_review' stage.",
         )
 
     now = datetime.now(timezone.utc)
@@ -1258,12 +1286,14 @@ async def review_task(
 
         await db.tasks.update_one(
             {"_id": ObjectId(task_id)},
-            {"$set": {
-                "stage": "done",
-                "is_rejected": False,
-                "rejection_feedback": None,
-                "updated_at": now,
-            }},
+            {
+                "$set": {
+                    "stage": "done",
+                    "is_rejected": False,
+                    "rejection_feedback": None,
+                    "updated_at": now,
+                }
+            },
         )
 
     elif review_data.action == "reject":
@@ -1282,12 +1312,14 @@ async def review_task(
 
         await db.tasks.update_one(
             {"_id": ObjectId(task_id)},
-            {"$set": {
-                "stage": "in_progress",
-                "is_rejected": True,
-                "rejection_feedback": review_data.feedback,
-                "updated_at": now,
-            }},
+            {
+                "$set": {
+                    "stage": "in_progress",
+                    "is_rejected": True,
+                    "rejection_feedback": review_data.feedback,
+                    "updated_at": now,
+                }
+            },
         )
 
     updated = await db.tasks.find_one({"_id": ObjectId(task_id)})
@@ -1349,8 +1381,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         FRONTEND_URL,
-        "http://localhost:5173",    # Vite dev server
-        "http://localhost:3000",    # Alternative dev port
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3000",  # Alternative dev port
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -4475,6 +4507,7 @@ kubectl describe pod <pod-name> -n foreman
 ```python
 class RevisionEntry(BaseModel):
     """A single rejection/revision record."""
+
     revision_number: int
     rejected_at: datetime
     feedback: str
@@ -4605,7 +4638,9 @@ class TaskCreate(BaseModel):
     description: str = Field(default="", max_length=1000)
     assigned_to: str = Field(...)
     complexity: ComplexityType = Field(default=2)
-    deadline: Optional[datetime] = Field(None, description="Optional deadline — ISO 8601 format")
+    deadline: Optional[datetime] = Field(
+        None, description="Optional deadline — ISO 8601 format"
+    )
 ```
 
 **Ibrahim's task:**
